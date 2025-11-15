@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+instance/
+venv/
+.venv/
+.pytest_cache/
+.migrations/
+*.log
+*.sqlite3
+.DS_Store
+node_modules/
