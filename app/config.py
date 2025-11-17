@@ -3,8 +3,15 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret")
-    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "mysql+pymysql://root:root@127.0.0.1:3306/projectdb")
+    # Claves necesarias
+    SECRET_KEY = os.getenv("supersecret123")
+    JWT_SECRET_KEY = os.getenv("jwtsecret456")
+
+    # Base de datos — Railway te da DATABASE_URL automáticamente
+    SQLALCHEMY_DATABASE_URI = os.getenv("postgresql://crud_yandhi_db_user:B0MnZON06afdwf413CNHhvbWub9zs4EC@dpg-d4d9buk9c44c73980hig-a/crud_yandhi_db")
+
+    # Config extra
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "jwt-secret")
+
+    # Logs
     LOG_FILE = os.getenv("LOG_FILE", "app_operations.log")
