@@ -7,21 +7,37 @@ class Config:
     # Claves necesarias
     SECRET_KEY = os.getenv("SECRET_KEY", "supersecret123")
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "jwtsecret456")
-    
-    # Base de datos — Railway/Render envía DATABASE_URL automáticamente
+
+    # Base de datos — Railway/Render proveen DATABASE_URL
     database_url = os.getenv(
         "DATABASE_URL",
         "postgresql://postgres:qFlKJSWOPANJLYOaqOjvylicHSOHojQJ@postgres.railway.internal:5432/railway"
     )
 
-    # Corrección automática del formato 'postgres://' → 'postgresql://'
-    if database_url and database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    # Corrección: 'postgres://' → 'postgresql+psycopg2://'
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace(
+            "postgres://",
+            "postgresql+psycopg2://",
+            1
+        )
+
+    # Corrección: 'postgresql://' → 'postgresql+psycopg2://'
+    if database_url.startswith("postgresql://") and "+psycopg2" not in database_url:
+        database_url = database_url.replace(
+            "postgresql://",
+            "postgresql+psycopg2://",
+            1
+        )
 
     SQLALCHEMY_DATABASE_URI = database_url
 
-    # SQLAlchemy mejora
+    # Mejores prácticas de SQLAlchemy
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+    }
 
     # Logs
     LOG_FILE = os.getenv("LOG_FILE", "app_operations.log")
