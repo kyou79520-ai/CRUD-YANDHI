@@ -11,7 +11,7 @@ class Config:
     # Base de datos — Railway/Render envía DATABASE_URL automáticamente
     database_url = os.getenv(
         "DATABASE_URL",
-        "postgresql://postgres:qFlKJSWOPANJLYOaqOjvylicHSOHojQJ@metro.proxy.rlwy.net:46243/railway"
+        "postgresql://postgres:qFlKJSWOPANJLYOaqOjvylicHSOHojQJ@postgres.railway.internal:5432/railway"
     )
 
     # Corrección automática del formato 'postgres://' → 'postgresql://'
