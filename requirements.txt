@@ -1,3 +1,7 @@
-Flask==2.3.3
-Werkzeug==2.3.7
-gunicorn==22.0.0
+Flask
+Flask-SQLAlchemy
+Flask-Migrate
+Flask-JWT-Extended
+PyMySQL
+python-dotenv
+gunicorn
