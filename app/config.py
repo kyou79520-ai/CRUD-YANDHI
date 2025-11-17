@@ -8,7 +8,7 @@ class Config:
     JWT_SECRET_KEY = os.getenv("jwtsecret456")
 
     # Base de datos — Railway te da DATABASE_URL automáticamente
-    SQLALCHEMY_DATABASE_URI = os.getenv("postgresql://crud_yandhi_db_user:B0MnZON06afdwf413CNHhvbWub9zs4EC@dpg-d4d9buk9c44c73980hig-a/crud_yandhi_db")
+    SQLALCHEMY_DATABASE_URI = os.getenv("postgresql://postgres:qFlKJSWOPANJLYOaqOjvylicHSOHojQJ@postgres.railway.internal:5432/railway")
 
     # Config extra
     SQLALCHEMY_TRACK_MODIFICATIONS = False
