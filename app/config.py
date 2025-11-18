@@ -11,7 +11,7 @@ class Config:
     # Base de datos — Railway/Render proveen DATABASE_URL
     database_url = os.getenv(
         "DATABASE_URL",
-        "postgresql://postgres:qFlKJSWOPANJLYOaqOjvylicHSOHojQJ@postgres.railway.internal:5432/railway"
+        "postgresql://localhost/yandhi_db"
     )
 
     # Corrección: 'postgres://' → 'postgresql+psycopg2://'
