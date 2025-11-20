@@ -23,25 +23,35 @@ def create_app():
     
     # Crear tablas y datos iniciales automáticamente
     with app.app_context():
-        db.create_all()
-        
-        # Crear roles si no existen
-        if not Role.query.first():
-            admin_role = Role(name='admin')
-            manager_role = Role(name='manager')
-            viewer_role = Role(name='viewer')
-            db.session.add_all([admin_role, manager_role, viewer_role])
-            db.session.commit()
-            print("✅ Roles creados: admin, manager, viewer")
-        
-        # Crear usuario admin si no existe
-        if not User.query.filter_by(username='admin').first():
-            admin_role = Role.query.filter_by(name='admin').first()
-            admin_user = User(username='admin', role=admin_role)
-            admin_user.set_password('admin123')
-            db.session.add(admin_user)
-            db.session.commit()
-            print("✅ Usuario admin creado (username: admin, password: admin123)")
+        try:
+            db.create_all()
+            print("✅ Tablas de base de datos verificadas/creadas")
+            
+            # Crear roles si no existen
+            if not Role.query.first():
+                admin_role = Role(name='admin')
+                manager_role = Role(name='manager')
+                viewer_role = Role(name='viewer')
+                db.session.add_all([admin_role, manager_role, viewer_role])
+                db.session.commit()
+                print("✅ Roles creados: admin, manager, viewer")
+            else:
+                print("✅ Roles ya existen")
+            
+            # Crear usuario admin si no existe
+            if not User.query.filter_by(username='admin').first():
+                admin_role = Role.query.filter_by(name='admin').first()
+                admin_user = User(username='admin', role=admin_role)
+                admin_user.set_password('admin123')
+                db.session.add(admin_user)
+                db.session.commit()
+                print("✅ Usuario admin creado (username: admin, password: admin123)")
+            else:
+                print("✅ Usuario admin ya existe")
+                
+        except Exception as e:
+            print(f"❌ Error al inicializar base de datos: {e}")
+            db.session.rollback()
     
     # Registrar blueprints
     from .routes import bp as routes_bp
