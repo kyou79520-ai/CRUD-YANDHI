@@ -4,7 +4,6 @@ from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 from .models import LogEntry
 from . import db
 
-
 def role_required(allowed_roles):
     def decorator(fn):
         @wraps(fn)
@@ -32,3 +31,25 @@ def role_required(allowed_roles):
             return fn(*args, **kwargs)
         return wrapper
     return decorator
+
+def log_db_action(action, details=None):
+    """
+    Registra acciones de base de datos para auditoría
+    """
+    try:
+        user_id = g.current_user.get("id") if hasattr(g, 'current_user') else None
+        username = g.current_user.get("username") if hasattr(g, 'current_user') else "system"
+        
+        log_entry = LogEntry(
+            action=action,
+            details=details,
+            user_id=user_id,
+            username=username
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+        current_app.logger.info(f"[DB_ACTION] {action} by {username} - {details}")
+    except Exception as e:
+        current_app.logger.error(f"Error logging action: {str(e)}")
+        # No fallar si el log falla
+        pass
