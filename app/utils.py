@@ -4,33 +4,31 @@ from flask_jwt_extended import get_jwt_identity, verify_jwt_in_request
 from .models import LogEntry
 from . import db
 
+
 def role_required(allowed_roles):
     def decorator(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
             try:
                 verify_jwt_in_request()
-            except Exception:
-                return jsonify({"msg":"Token missing or invalid"}), 401
+            except Exception as e:
+                # TEMPORAL: Ver el error real
+                current_app.logger.error(f"JWT verification failed: {str(e)}")
+                return jsonify({"msg":"Token missing or invalid", "error": str(e)}), 401
+            
             identity = get_jwt_identity()
+            if not identity:
+                return jsonify({"msg":"No identity in token"}), 401
+            
             role = identity.get("role")
+            if not role:
+                return jsonify({"msg":"No role in token identity"}), 401
+            
             if role not in allowed_roles:
                 return jsonify({"msg":"Access forbidden for role"}), 403
+            
             # attach user identity to g for logging
             g.current_user = identity
             return fn(*args, **kwargs)
         return wrapper
     return decorator
-
-def log_db_action(action, details=""):
-    from flask import current_app, g
-    identity = getattr(g, "current_user", None)
-    uid = identity.get("id") if identity else None
-    uname = identity.get("username") if identity else None
-    try:
-        le = LogEntry(user_id=uid, username=uname, action=action, details=details)
-        db.session.add(le)
-        db.session.commit()
-    except Exception:
-        current_app.logger.exception("failed to write db log")
-    current_app.logger.info(f"USER={uname} ACTION={action} DETAILS={details}")
