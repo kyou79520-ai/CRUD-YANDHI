@@ -22,23 +22,49 @@ class User(db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-class Project(db.Model):
-    __tablename__ = "projects"
+class Customer(db.Model):
+    __tablename__ = "customers"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    email = db.Column(db.String(150))
+    phone = db.Column(db.String(20))
+    address = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+class Product(db.Model):
+    __tablename__ = "products"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), nullable=False)
     description = db.Column(db.Text)
+    price = db.Column(db.Float, nullable=False)
+    stock = db.Column(db.Integer, default=0)
+    category = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    created_by = db.Column(db.Integer, db.ForeignKey("users.id"))
 
-class Task(db.Model):
-    __tablename__ = "tasks"
+class Sale(db.Model):
+    __tablename__ = "sales"
     id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(150), nullable=False)
-    details = db.Column(db.Text)
-    status = db.Column(db.String(50), default="pending")
-    project_id = db.Column(db.Integer, db.ForeignKey("projects.id"))
-    assigned_to = db.Column(db.Integer, db.ForeignKey("users.id"))
+    customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"))
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    total = db.Column(db.Float, nullable=False)
+    payment_method = db.Column(db.String(50))
+    status = db.Column(db.String(50), default="completed")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    customer = db.relationship("Customer", backref="sales")
+    user = db.relationship("User", backref="sales")
+
+class SaleItem(db.Model):
+    __tablename__ = "sale_items"
+    id = db.Column(db.Integer, primary_key=True)
+    sale_id = db.Column(db.Integer, db.ForeignKey("sales.id"), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    unit_price = db.Column(db.Float, nullable=False)
+    subtotal = db.Column(db.Float, nullable=False)
+    
+    sale = db.relationship("Sale", backref="items")
+    product = db.relationship("Product", backref="sale_items")
 
 class LogEntry(db.Model):
     __tablename__ = "logs"
