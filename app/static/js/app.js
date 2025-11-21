@@ -1,8 +1,10 @@
 // ========== CONFIGURACIÓN ==========
-const API_URL = '/api';
+// CAMBIAR A LA URL DE RENDER
+const API_URL = 'https://crud-yandhi.onrender.com/api';
 let TOKEN = localStorage.getItem('token');
 let CURRENT_USER = JSON.parse(localStorage.getItem('user') || '{}');
 let CART = [];
+
 
 // ========== UTILIDADES ==========
 function showScreen(screenId) {
