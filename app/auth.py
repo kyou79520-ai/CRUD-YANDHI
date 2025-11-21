@@ -10,20 +10,48 @@ def login():
     data = request.json or {}
     username = data.get("username")
     password = data.get("password")
+    
     if not username or not password:
-        return jsonify({"msg":"username and password required"}), 400
+        return jsonify({"msg": "username and password required"}), 400
+    
     user = User.query.filter_by(username=username).first()
+    
     if not user or not user.check_password(password):
-        return jsonify({"msg":"Invalid credentials"}), 401
-    access_token = create_access_token(identity={"id": user.id, "username": user.username, "role": user.role.name})
-    # log to DB
+        return jsonify({"msg": "Invalid credentials"}), 401
+    
+    # Crear el token con la información del usuario
+    access_token = create_access_token(
+        identity={
+            "id": user.id, 
+            "username": user.username, 
+            "role": user.role.name
+        }
+    )
+    
+    # Log de login
     try:
-        le = LogEntry(user_id=user.id, username=user.username, action="login", details="Login exitoso")
-        db.session.add(le); db.session.commit()
+        le = LogEntry(
+            user_id=user.id, 
+            username=user.username, 
+            action="login", 
+            details="Login exitoso"
+        )
+        db.session.add(le)
+        db.session.commit()
     except Exception:
         current_app.logger.exception("failed to write login log")
+    
     current_app.logger.info(f"USER={user.username} ACTION=login")
-    return jsonify(access_token=access_token)
+    
+    # IMPORTANTE: Devolver tanto el token como la info del usuario
+    return jsonify({
+        "access_token": access_token,
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "role": user.role.name
+        }
+    }), 200
 
 @bp.route("/whoami", methods=["GET"])
 @jwt_required()
