@@ -2,7 +2,15 @@
 // CAMBIAR A LA URL DE RENDER
 const API_URL = 'https://crud-yandhi.onrender.com/api';
 let TOKEN = localStorage.getItem('token');
-let CURRENT_USER = JSON.parse(localStorage.getItem('user') || '{}');
+let CURRENT_USER = (() => {
+    try {
+        const userData = localStorage.getItem('user');
+        return userData ? JSON.parse(userData) : {};
+    } catch (e) {
+        console.error('Error parsing user data:', e);
+        return {};
+    }
+})();
 let CART = [];
 
 
