@@ -85,6 +85,13 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     
     try {
         const data = await apiRequest('/auth/login', 'POST', { username, password });
+        
+        console.log('Login response:', data); // Debug
+        
+        if (!data.access_token || !data.user) {
+            throw new Error('Respuesta inválida del servidor');
+        }
+        
         TOKEN = data.access_token;
         CURRENT_USER = data.user;
         
@@ -97,7 +104,8 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         showScreen('main-screen');
         loadDashboard();
     } catch (error) {
-        showError('login-error', 'Usuario o contraseña incorrectos');
+        console.error('Login error:', error);
+        showError('login-error', error.message || 'Usuario o contraseña incorrectos');
     }
 });
 
