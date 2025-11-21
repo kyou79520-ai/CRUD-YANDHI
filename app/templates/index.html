@@ -1,8 +1,199 @@
-<!doctype html>
-<html>
-<head><meta charset="utf-8"><title>Project Management</title></head>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema POS - Licorería</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
 <body>
-<h1>Project Management API</h1>
-<p>API en /api/*</p>
+    <!-- Pantalla de Login -->
+    <div id="login-screen" class="screen active">
+        <div class="login-container">
+            <div class="login-header">
+                <h1>🍾 Sistema POS</h1>
+                <p>Licorería - Punto de Venta</p>
+            </div>
+            <form id="login-form">
+                <div class="form-group">
+                    <label for="username">Usuario</label>
+                    <input type="text" id="username" name="username" required placeholder="Ingresa tu usuario">
+                </div>
+                <div class="form-group">
+                    <label for="password">Contraseña</label>
+                    <input type="password" id="password" name="password" required placeholder="Ingresa tu contraseña">
+                </div>
+                <button type="submit" class="btn btn-primary">Iniciar Sesión</button>
+                <div id="login-error" class="error-message"></div>
+            </form>
+            <div class="login-info">
+                <p><strong>Usuarios de prueba:</strong></p>
+                <p>👑 admin / admin123 (Administrador)</p>
+                <p>👔 manager / manager123 (Gerente)</p>
+                <p>👁️ viewer / viewer123 (Visor)</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pantalla Principal (Dashboard) -->
+    <div id="main-screen" class="screen">
+        <!-- Navbar -->
+        <nav class="navbar">
+            <div class="navbar-brand">
+                <h2>🍾 Licorería POS</h2>
+            </div>
+            <div class="navbar-user">
+                <span id="user-info"></span>
+                <button id="logout-btn" class="btn btn-secondary">Cerrar Sesión</button>
+            </div>
+        </nav>
+
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <ul class="menu">
+                <li class="menu-item active" data-section="dashboard">
+                    <span class="icon">📊</span> Dashboard
+                </li>
+                <li class="menu-item" data-section="sales">
+                    <span class="icon">💰</span> Nueva Venta
+                </li>
+                <li class="menu-item" data-section="sales-history">
+                    <span class="icon">📜</span> Historial de Ventas
+                </li>
+                <li class="menu-item" data-section="products">
+                    <span class="icon">🍺</span> Productos
+                </li>
+                <li class="menu-item" data-section="customers">
+                    <span class="icon">👥</span> Clientes
+                </li>
+                <li class="menu-item admin-only" data-section="users">
+                    <span class="icon">👤</span> Usuarios
+                </li>
+                <li class="menu-item" data-section="logs">
+                    <span class="icon">📋</span> Logs
+                </li>
+            </ul>
+        </div>
+
+        <!-- Contenido Principal -->
+        <div class="main-content">
+            <!-- Dashboard -->
+            <div id="dashboard-section" class="content-section active">
+                <h2>Dashboard</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">💵</div>
+                        <div class="stat-info">
+                            <p class="stat-label">Ventas Totales</p>
+                            <p class="stat-value" id="total-sales">$0.00</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🍺</div>
+                        <div class="stat-info">
+                            <p class="stat-label">Productos</p>
+                            <p class="stat-value" id="total-products">0</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">👥</div>
+                        <div class="stat-info">
+                            <p class="stat-label">Clientes</p>
+                            <p class="stat-value" id="total-customers">0</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="recent-sales">
+                    <h3>Ventas Recientes</h3>
+                    <div id="recent-sales-list"></div>
+                </div>
+            </div>
+
+            <!-- Nueva Venta -->
+            <div id="sales-section" class="content-section">
+                <h2>Nueva Venta</h2>
+                <div class="sales-container">
+                    <div class="products-list">
+                        <h3>Productos Disponibles</h3>
+                        <input type="text" id="search-product" placeholder="🔍 Buscar producto..." class="search-input">
+                        <div id="products-grid"></div>
+                    </div>
+                    <div class="cart">
+                        <h3>Carrito de Compra</h3>
+                        <div class="cart-customer">
+                            <label>Cliente (opcional):</label>
+                            <select id="cart-customer">
+                                <option value="">Sin cliente</option>
+                            </select>
+                        </div>
+                        <div id="cart-items"></div>
+                        <div class="cart-total">
+                            <h3>Total: $<span id="cart-total">0.00</span></h3>
+                        </div>
+                        <div class="cart-payment">
+                            <label>Método de pago:</label>
+                            <select id="payment-method">
+                                <option value="cash">Efectivo</option>
+                                <option value="card">Tarjeta</option>
+                                <option value="transfer">Transferencia</option>
+                            </select>
+                        </div>
+                        <button id="complete-sale-btn" class="btn btn-success">Completar Venta</button>
+                        <button id="clear-cart-btn" class="btn btn-secondary">Limpiar Carrito</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Historial de Ventas -->
+            <div id="sales-history-section" class="content-section">
+                <h2>Historial de Ventas</h2>
+                <div id="sales-history-list"></div>
+            </div>
+
+            <!-- Productos -->
+            <div id="products-section" class="content-section">
+                <h2>Gestión de Productos</h2>
+                <button id="add-product-btn" class="btn btn-primary manager-only">➕ Agregar Producto</button>
+                <div id="products-table"></div>
+            </div>
+
+            <!-- Clientes -->
+            <div id="customers-section" class="content-section">
+                <h2>Gestión de Clientes</h2>
+                <button id="add-customer-btn" class="btn btn-primary manager-only">➕ Agregar Cliente</button>
+                <div id="customers-table"></div>
+            </div>
+
+            <!-- Usuarios -->
+            <div id="users-section" class="content-section">
+                <h2>Gestión de Usuarios</h2>
+                <button id="add-user-btn" class="btn btn-primary admin-only">➕ Agregar Usuario</button>
+                <div id="users-table"></div>
+            </div>
+
+            <!-- Logs -->
+            <div id="logs-section" class="content-section">
+                <h2>Registro de Actividades</h2>
+                <div id="logs-table"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para agregar/editar -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modal-title">Modal</h2>
+            <form id="modal-form">
+                <div id="modal-body"></div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">Guardar</button>
+                    <button type="button" class="btn btn-secondary close">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
 </body>
 </html>
