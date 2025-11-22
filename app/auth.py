@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from .models import User, LogEntry
 from . import db
+import json
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -19,14 +20,18 @@ def login():
     if not user or not user.check_password(password):
         return jsonify({"msg": "Invalid credentials"}), 401
     
-    # Crear el token con la información del usuario
-    access_token = create_access_token(
-        identity={
-            "id": user.id, 
-            "username": user.username, 
-            "role": user.role.name
-        }
-    )
+    # Crear el identity como diccionario
+    user_data = {
+        "id": user.id,
+        "username": user.username,
+        "role": user.role.name
+    }
+    
+    # Convertir a string JSON para el token
+    identity_string = json.dumps(user_data)
+    
+    # Crear token con string como identity
+    access_token = create_access_token(identity=identity_string)
     
     # Log de login
     try:
@@ -43,18 +48,16 @@ def login():
     
     current_app.logger.info(f"USER={user.username} ACTION=login")
     
-    # IMPORTANTE: Devolver tanto el token como la info del usuario
+    # Devolver token y usuario
     return jsonify({
         "access_token": access_token,
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "role": user.role.name
-        }
+        "user": user_data
     }), 200
 
 @bp.route("/whoami", methods=["GET"])
 @jwt_required()
 def whoami():
-    identity = get_jwt_identity()
+    # Obtener el identity (string) y convertirlo de vuelta a dict
+    identity_string = get_jwt_identity()
+    identity = json.loads(identity_string)
     return jsonify(identity)
