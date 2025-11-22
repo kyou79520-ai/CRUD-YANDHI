@@ -1,6 +1,5 @@
 // ========== CONFIGURACIÓN ==========
-// CAMBIAR A LA URL DE RENDER
-const API_URL = 'https://crud-yandhi.onrender.com/api';
+const API_URL = '/api';
 let TOKEN = localStorage.getItem('token');
 let CURRENT_USER = (() => {
     try {
@@ -12,7 +11,6 @@ let CURRENT_USER = (() => {
     }
 })();
 let CART = [];
-
 
 // ========== UTILIDADES ==========
 function showScreen(screenId) {
@@ -63,8 +61,11 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
         }
     };
     
-    if (TOKEN) {
-        options.headers['Authorization'] = `Bearer ${TOKEN}`;
+    // Obtener el token actualizado del localStorage
+    const currentToken = localStorage.getItem('token');
+    
+    if (currentToken) {
+        options.headers['Authorization'] = `Bearer ${currentToken}`;
     }
     
     if (body) {
@@ -73,6 +74,16 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     
     try {
         const response = await fetch(API_URL + endpoint, options);
+        
+        // Si es 401, el token expiró o es inválido
+        if (response.status === 401) {
+            localStorage.clear();
+            TOKEN = null;
+            CURRENT_USER = {};
+            showScreen('login-screen');
+            throw new Error('Sesión expirada. Por favor inicia sesión nuevamente.');
+        }
+        
         const data = await response.json();
         
         if (!response.ok) {
@@ -82,7 +93,9 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
         return data;
     } catch (error) {
         console.error('API Error:', error);
-        alert('Error: ' + error.message);
+        if (error.message !== 'Sesión expirada. Por favor inicia sesión nuevamente.') {
+            alert('Error: ' + error.message);
+        }
         throw error;
     }
 }
@@ -102,11 +115,15 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
             throw new Error('Respuesta inválida del servidor');
         }
         
+        // Guardar token y usuario
         TOKEN = data.access_token;
         CURRENT_USER = data.user;
         
         localStorage.setItem('token', TOKEN);
         localStorage.setItem('user', JSON.stringify(CURRENT_USER));
+        
+        console.log('Token guardado:', TOKEN); // Debug
+        console.log('Usuario guardado:', CURRENT_USER); // Debug
         
         document.getElementById('user-info').textContent = `👤 ${CURRENT_USER.username} (${CURRENT_USER.role})`;
         document.body.className = `role-${CURRENT_USER.role}`;
@@ -189,7 +206,7 @@ async function loadSalesPage() {
         const products = await apiRequest('/products');
         const productsGrid = document.getElementById('products-grid');
         productsGrid.innerHTML = products.map(p => `
-            <div class="product-card" onclick="addToCart(${p.id}, '${p.name}', ${p.price}, ${p.stock})">
+            <div class="product-card" onclick="addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.stock})">
                 <h4>${p.name}</h4>
                 <p class="price">$${p.price.toFixed(2)}</p>
                 <p class="stock">Stock: ${p.stock}</p>
@@ -365,9 +382,6 @@ async function loadSalesHistory() {
 async function viewSale(id) {
     try {
         const sale = await apiRequest(`/sales/${id}`);
-        const itemsHTML = sale.items.map(item => `
-            <p>${item.product} - ${item.quantity} x $${item.unit_price.toFixed(2)} = $${item.subtotal.toFixed(2)}</p>
-        `).join('');
         
         alert(`
 Venta #${sale.id}
