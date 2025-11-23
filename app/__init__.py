@@ -2,12 +2,55 @@ from flask import Flask, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
+from sqlalchemy import text
 from .config import Config
 from .logger import setup_app_logger
 
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
+
+def migrate_database(app):
+    """Ejecuta migraciones necesarias en la base de datos"""
+    with app.app_context():
+        try:
+            # Verificar si las columnas existen
+            inspector = db.inspect(db.engine)
+            existing_columns = [col['name'] for col in inspector.get_columns('products')]
+            
+            # Agregar min_stock si no existe
+            if 'min_stock' not in existing_columns:
+                print("➕ Agregando columna 'min_stock' a products...")
+                db.session.execute(text(
+                    "ALTER TABLE products ADD COLUMN min_stock INTEGER DEFAULT 10"
+                ))
+                db.session.commit()
+                print("✅ Columna 'min_stock' agregada")
+            
+            # Agregar supplier_id si no existe
+            if 'supplier_id' not in existing_columns:
+                print("➕ Agregando columna 'supplier_id' a products...")
+                db.session.execute(text(
+                    "ALTER TABLE products ADD COLUMN supplier_id INTEGER"
+                ))
+                db.session.commit()
+                print("✅ Columna 'supplier_id' agregada")
+                
+                # Intentar agregar foreign key
+                try:
+                    db.session.execute(text(
+                        "ALTER TABLE products ADD CONSTRAINT fk_products_supplier "
+                        "FOREIGN KEY (supplier_id) REFERENCES suppliers(id)"
+                    ))
+                    db.session.commit()
+                    print("✅ Foreign key constraint agregada")
+                except Exception as e:
+                    print(f"ℹ️  Foreign key ya existe o no se pudo agregar")
+                    db.session.rollback()
+                    
+        except Exception as e:
+            print(f"⚠️  Error en migración (puede ser normal si ya se ejecutó): {e}")
+            db.session.rollback()
 
 def create_app():
     app = Flask(__name__, static_folder="static", template_folder="templates")
@@ -24,8 +67,12 @@ def create_app():
     # Crear tablas y datos iniciales automáticamente
     with app.app_context():
         try:
+            # Primero crear todas las tablas
             db.create_all()
             print("✅ Tablas de base de datos verificadas/creadas")
+            
+            # Ejecutar migraciones si es necesario
+            migrate_database(app)
             
             # Crear roles si no existen
             roles_needed = ['admin', 'manager', 'viewer']
@@ -184,6 +231,8 @@ def create_app():
                 
         except Exception as e:
             print(f"❌ Error al inicializar base de datos: {e}")
+            import traceback
+            traceback.print_exc()
             db.session.rollback()
     
     # Registrar blueprints
