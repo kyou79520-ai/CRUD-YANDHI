@@ -19,7 +19,7 @@ def create_app():
     setup_app_logger(app)
     
     # Importar TODOS los modelos
-    from .models import User, Role, LogEntry, Customer, Product, Sale, SaleItem
+    from .models import User, Role, LogEntry, Customer, Product, Sale, SaleItem, Supplier
     
     # Crear tablas y datos iniciales automáticamente
     with app.app_context():
@@ -65,46 +65,103 @@ def create_app():
                 db.session.commit()
                 print("✅ Usuario viewer creado (username: viewer, password: viewer123)")
             
+            # Agregar proveedores de ejemplo si no existen
+            if Supplier.query.count() == 0:
+                proveedores = [
+                    Supplier(name="Cervecería Modelo", contact_name="Juan Pérez", 
+                            email="contacto@modelo.com", phone="5551234567", 
+                            address="CDMX, México"),
+                    Supplier(name="Grupo Heineken México", contact_name="María García", 
+                            email="ventas@heineken.mx", phone="5552345678", 
+                            address="Monterrey, México"),
+                    Supplier(name="Vinos L.A. Cetto", contact_name="Carlos López", 
+                            email="info@lacetto.com", phone="5553456789", 
+                            address="Baja California, México"),
+                    Supplier(name="Casa Cuervo", contact_name="Ana Martínez", 
+                            email="contacto@cuervo.com", phone="5554567890", 
+                            address="Jalisco, México"),
+                    Supplier(name="Distribuidora de Licores Nacional", contact_name="Roberto Sánchez", 
+                            email="ventas@licoresnacional.com", phone="5555678901", 
+                            address="Guadalajara, México")
+                ]
+                for prov in proveedores:
+                    db.session.add(prov)
+                db.session.commit()
+                print(f"✅ {len(proveedores)} proveedores de ejemplo agregados")
+            
             # Agregar productos de licorería si no existen
             if Product.query.count() == 0:
+                # Obtener proveedores
+                modelo = Supplier.query.filter_by(name="Cervecería Modelo").first()
+                heineken = Supplier.query.filter_by(name="Grupo Heineken México").first()
+                cetto = Supplier.query.filter_by(name="Vinos L.A. Cetto").first()
+                cuervo = Supplier.query.filter_by(name="Casa Cuervo").first()
+                distribuidor = Supplier.query.filter_by(name="Distribuidora de Licores Nacional").first()
+                
                 productos = [
                     # Cervezas
-                    Product(name="Corona Extra 355ml", description="Cerveza clara mexicana", price=25.00, stock=120, category="Cervezas"),
-                    Product(name="Modelo Especial 355ml", description="Cerveza tipo pilsner", price=23.00, stock=100, category="Cervezas"),
-                    Product(name="Victoria 355ml", description="Cerveza tipo viena", price=22.00, stock=90, category="Cervezas"),
-                    Product(name="Heineken 355ml", description="Cerveza importada", price=30.00, stock=80, category="Cervezas"),
-                    Product(name="Tecate Light 355ml", description="Cerveza light", price=20.00, stock=110, category="Cervezas"),
+                    Product(name="Corona Extra 355ml", description="Cerveza clara mexicana", 
+                           price=25.00, stock=120, min_stock=50, category="Cervezas", supplier=modelo),
+                    Product(name="Modelo Especial 355ml", description="Cerveza tipo pilsner", 
+                           price=23.00, stock=100, min_stock=50, category="Cervezas", supplier=modelo),
+                    Product(name="Victoria 355ml", description="Cerveza tipo viena", 
+                           price=22.00, stock=90, min_stock=40, category="Cervezas", supplier=modelo),
+                    Product(name="Heineken 355ml", description="Cerveza importada", 
+                           price=30.00, stock=80, min_stock=40, category="Cervezas", supplier=heineken),
+                    Product(name="Tecate Light 355ml", description="Cerveza light", 
+                           price=20.00, stock=110, min_stock=50, category="Cervezas", supplier=heineken),
                     
                     # Vinos
-                    Product(name="Vino L.A. Cetto Tinto", description="Vino tinto 750ml", price=180.00, stock=40, category="Vinos"),
-                    Product(name="Vino L.A. Cetto Blanco", description="Vino blanco 750ml", price=180.00, stock=35, category="Vinos"),
-                    Product(name="Vino Santo Tomás Tinto", description="Vino tinto 750ml", price=220.00, stock=30, category="Vinos"),
-                    Product(name="Vino Casa Madero Rosado", description="Vino rosado 750ml", price=200.00, stock=25, category="Vinos"),
+                    Product(name="Vino L.A. Cetto Tinto", description="Vino tinto 750ml", 
+                           price=180.00, stock=40, min_stock=15, category="Vinos", supplier=cetto),
+                    Product(name="Vino L.A. Cetto Blanco", description="Vino blanco 750ml", 
+                           price=180.00, stock=35, min_stock=15, category="Vinos", supplier=cetto),
+                    Product(name="Vino Santo Tomás Tinto", description="Vino tinto 750ml", 
+                           price=220.00, stock=30, min_stock=10, category="Vinos", supplier=cetto),
+                    Product(name="Vino Casa Madero Rosado", description="Vino rosado 750ml", 
+                           price=200.00, stock=25, min_stock=10, category="Vinos", supplier=cetto),
                     
                     # Licores y Destilados
-                    Product(name="Tequila José Cuervo Especial", description="Tequila reposado 750ml", price=280.00, stock=50, category="Tequilas"),
-                    Product(name="Tequila Jimador Reposado", description="Tequila 100% agave 750ml", price=320.00, stock=45, category="Tequilas"),
-                    Product(name="Tequila Herradura Blanco", description="Tequila blanco 750ml", price=450.00, stock=30, category="Tequilas"),
-                    Product(name="Mezcal 400 Conejos", description="Mezcal joven 750ml", price=380.00, stock=35, category="Mezcales"),
-                    Product(name="Ron Bacardi Blanco", description="Ron blanco 750ml", price=250.00, stock=40, category="Rones"),
-                    Product(name="Vodka Absolut", description="Vodka premium 750ml", price=420.00, stock=30, category="Vodkas"),
-                    Product(name="Whisky Johnnie Walker Red", description="Whisky escocés 750ml", price=480.00, stock=25, category="Whiskys"),
+                    Product(name="Tequila José Cuervo Especial", description="Tequila reposado 750ml", 
+                           price=280.00, stock=50, min_stock=20, category="Tequilas", supplier=cuervo),
+                    Product(name="Tequila Jimador Reposado", description="Tequila 100% agave 750ml", 
+                           price=320.00, stock=45, min_stock=20, category="Tequilas", supplier=cuervo),
+                    Product(name="Tequila Herradura Blanco", description="Tequila blanco 750ml", 
+                           price=450.00, stock=30, min_stock=15, category="Tequilas", supplier=cuervo),
+                    Product(name="Mezcal 400 Conejos", description="Mezcal joven 750ml", 
+                           price=380.00, stock=35, min_stock=15, category="Mezcales", supplier=distribuidor),
+                    Product(name="Ron Bacardi Blanco", description="Ron blanco 750ml", 
+                           price=250.00, stock=40, min_stock=20, category="Rones", supplier=distribuidor),
+                    Product(name="Vodka Absolut", description="Vodka premium 750ml", 
+                           price=420.00, stock=30, min_stock=15, category="Vodkas", supplier=distribuidor),
+                    Product(name="Whisky Johnnie Walker Red", description="Whisky escocés 750ml", 
+                           price=480.00, stock=25, min_stock=10, category="Whiskys", supplier=distribuidor),
                     
                     # Aperitivos y Mezclas
-                    Product(name="Squirt 600ml", description="Refresco de toronja", price=15.00, stock=100, category="Refrescos"),
-                    Product(name="Coca Cola 600ml", description="Refresco de cola", price=15.00, stock=100, category="Refrescos"),
-                    Product(name="Agua Mineral Topo Chico", description="Agua mineral 355ml", price=18.00, stock=80, category="Refrescos"),
-                    Product(name="Jugo Jumex Naranja 1L", description="Jugo de naranja", price=25.00, stock=60, category="Jugos"),
+                    Product(name="Squirt 600ml", description="Refresco de toronja", 
+                           price=15.00, stock=100, min_stock=30, category="Refrescos", supplier=distribuidor),
+                    Product(name="Coca Cola 600ml", description="Refresco de cola", 
+                           price=15.00, stock=100, min_stock=30, category="Refrescos", supplier=distribuidor),
+                    Product(name="Agua Mineral Topo Chico", description="Agua mineral 355ml", 
+                           price=18.00, stock=80, min_stock=25, category="Refrescos", supplier=distribuidor),
+                    Product(name="Jugo Jumex Naranja 1L", description="Jugo de naranja", 
+                           price=25.00, stock=60, min_stock=20, category="Jugos", supplier=distribuidor),
                     
                     # Botanas
-                    Product(name="Cacahuates Japoneses", description="Botana 150g", price=30.00, stock=70, category="Botanas"),
-                    Product(name="Papas Sabritas Original", description="Papas fritas 170g", price=35.00, stock=60, category="Botanas"),
-                    Product(name="Chicharrón Preparado", description="Botana 100g", price=25.00, stock=50, category="Botanas"),
-                    Product(name="Mix de Nueces", description="Mezcla de nueces 200g", price=55.00, stock=40, category="Botanas"),
+                    Product(name="Cacahuates Japoneses", description="Botana 150g", 
+                           price=30.00, stock=70, min_stock=30, category="Botanas", supplier=distribuidor),
+                    Product(name="Papas Sabritas Original", description="Papas fritas 170g", 
+                           price=35.00, stock=60, min_stock=25, category="Botanas", supplier=distribuidor),
+                    Product(name="Chicharrón Preparado", description="Botana 100g", 
+                           price=25.00, stock=50, min_stock=20, category="Botanas", supplier=distribuidor),
+                    Product(name="Mix de Nueces", description="Mezcla de nueces 200g", 
+                           price=55.00, stock=40, min_stock=15, category="Botanas", supplier=distribuidor),
                     
                     # Cigarros
-                    Product(name="Marlboro Rojo", description="Cajetilla 20 cigarros", price=75.00, stock=100, category="Cigarros"),
-                    Product(name="Camel Blue", description="Cajetilla 20 cigarros", price=70.00, stock=80, category="Cigarros"),
+                    Product(name="Marlboro Rojo", description="Cajetilla 20 cigarros", 
+                           price=75.00, stock=100, min_stock=40, category="Cigarros", supplier=distribuidor),
+                    Product(name="Camel Blue", description="Cajetilla 20 cigarros", 
+                           price=70.00, stock=80, min_stock=35, category="Cigarros", supplier=distribuidor),
                 ]
                 for p in productos:
                     db.session.add(p)

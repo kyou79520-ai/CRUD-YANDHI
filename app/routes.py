@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app, g
 from . import db
-from .models import User, Role, Customer, Product, Sale, SaleItem, LogEntry
+from .models import User, Role, Customer, Product, Sale, SaleItem, LogEntry, Supplier
 from .utils import role_required, log_db_action
 from .auth import bp as auth_bp
 
@@ -104,6 +104,59 @@ def delete_customer(cid):
     log_db_action("delete_customer", f"customer_id={cid}")
     return jsonify({"msg": "deleted"})
 
+# ==================== SUPPLIERS ====================
+@bp.route("/suppliers", methods=["POST"])
+@role_required(["admin", "manager"])
+def create_supplier():
+    data = request.json
+    supplier = Supplier(
+        name=data.get("name"),
+        contact_name=data.get("contact_name"),
+        email=data.get("email"),
+        phone=data.get("phone"),
+        address=data.get("address")
+    )
+    db.session.add(supplier)
+    db.session.commit()
+    log_db_action("create_supplier", f"supplier_id={supplier.id}, name={supplier.name}")
+    return jsonify({"id": supplier.id, "name": supplier.name}), 201
+
+@bp.route("/suppliers", methods=["GET"])
+@role_required(["admin", "manager", "viewer"])
+def list_suppliers():
+    suppliers = Supplier.query.all()
+    return jsonify([{
+        "id": s.id,
+        "name": s.name,
+        "contact_name": s.contact_name,
+        "email": s.email,
+        "phone": s.phone,
+        "address": s.address
+    } for s in suppliers])
+
+@bp.route("/suppliers/<int:sid>", methods=["PUT"])
+@role_required(["admin", "manager"])
+def update_supplier(sid):
+    supplier = Supplier.query.get_or_404(sid)
+    data = request.json
+    supplier.name = data.get("name", supplier.name)
+    supplier.contact_name = data.get("contact_name", supplier.contact_name)
+    supplier.email = data.get("email", supplier.email)
+    supplier.phone = data.get("phone", supplier.phone)
+    supplier.address = data.get("address", supplier.address)
+    db.session.commit()
+    log_db_action("update_supplier", f"supplier_id={sid}")
+    return jsonify({"msg": "updated"})
+
+@bp.route("/suppliers/<int:sid>", methods=["DELETE"])
+@role_required(["admin"])
+def delete_supplier(sid):
+    supplier = Supplier.query.get_or_404(sid)
+    db.session.delete(supplier)
+    db.session.commit()
+    log_db_action("delete_supplier", f"supplier_id={sid}")
+    return jsonify({"msg": "deleted"})
+
 # ==================== PRODUCTS ====================
 @bp.route("/products", methods=["POST"])
 @role_required(["admin", "manager"])
@@ -114,7 +167,9 @@ def create_product():
         description=data.get("description"),
         price=data.get("price"),
         stock=data.get("stock", 0),
-        category=data.get("category")
+        min_stock=data.get("min_stock", 10),
+        category=data.get("category"),
+        supplier_id=data.get("supplier_id")
     )
     db.session.add(product)
     db.session.commit()
@@ -131,7 +186,11 @@ def list_products():
         "description": p.description,
         "price": p.price,
         "stock": p.stock,
-        "category": p.category
+        "min_stock": p.min_stock,
+        "category": p.category,
+        "supplier_id": p.supplier_id,
+        "supplier_name": p.supplier.name if p.supplier else None,
+        "is_low_stock": p.is_low_stock
     } for p in products])
 
 @bp.route("/products/<int:pid>", methods=["PUT"])
@@ -143,7 +202,9 @@ def update_product(pid):
     product.description = data.get("description", product.description)
     product.price = data.get("price", product.price)
     product.stock = data.get("stock", product.stock)
+    product.min_stock = data.get("min_stock", product.min_stock)
     product.category = data.get("category", product.category)
+    product.supplier_id = data.get("supplier_id", product.supplier_id)
     db.session.commit()
     log_db_action("update_product", f"product_id={pid}")
     return jsonify({"msg": "updated"})
@@ -273,12 +334,16 @@ def dashboard():
     total_sales = db.session.query(db.func.sum(Sale.total)).scalar() or 0
     total_products = Product.query.count()
     total_customers = Customer.query.count()
+    total_suppliers = Supplier.query.count()
+    low_stock_products = Product.query.filter(Product.stock <= Product.min_stock).count()
     recent_sales = Sale.query.order_by(Sale.created_at.desc()).limit(5).all()
     
     return jsonify({
         "total_sales": total_sales,
         "total_products": total_products,
         "total_customers": total_customers,
+        "total_suppliers": total_suppliers,
+        "low_stock_products": low_stock_products,
         "recent_sales": [{
             "id": s.id,
             "total": s.total,

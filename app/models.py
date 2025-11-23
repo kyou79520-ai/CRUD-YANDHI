@@ -31,6 +31,17 @@ class Customer(db.Model):
     address = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+# NUEVO: Modelo de Proveedores
+class Supplier(db.Model):
+    __tablename__ = "suppliers"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(150), nullable=False)
+    contact_name = db.Column(db.String(150))
+    email = db.Column(db.String(150))
+    phone = db.Column(db.String(20))
+    address = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
 class Product(db.Model):
     __tablename__ = "products"
     id = db.Column(db.Integer, primary_key=True)
@@ -38,8 +49,16 @@ class Product(db.Model):
     description = db.Column(db.Text)
     price = db.Column(db.Float, nullable=False)
     stock = db.Column(db.Integer, default=0)
+    min_stock = db.Column(db.Integer, default=10)  # NUEVO: Stock mínimo
     category = db.Column(db.String(100))
+    supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"))  # NUEVO: Relación con proveedor
+    supplier = db.relationship("Supplier", backref="products")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    @property
+    def is_low_stock(self):
+        """Verifica si el stock está por debajo del mínimo"""
+        return self.stock <= self.min_stock
 
 class Sale(db.Model):
     __tablename__ = "sales"
