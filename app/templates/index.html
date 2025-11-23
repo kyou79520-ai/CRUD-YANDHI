@@ -63,6 +63,9 @@
                 <li class="menu-item" data-section="products">
                     <span class="icon">🍺</span> Productos
                 </li>
+                <li class="menu-item" data-section="suppliers">
+                    <span class="icon">🚚</span> Proveedores
+                </li>
                 <li class="menu-item" data-section="customers">
                     <span class="icon">👥</span> Clientes
                 </li>
@@ -102,7 +105,21 @@
                             <p class="stat-value" id="total-customers">0</p>
                         </div>
                     </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">🚚</div>
+                        <div class="stat-info">
+                            <p class="stat-label">Proveedores</p>
+                            <p class="stat-value" id="total-suppliers">0</p>
+                        </div>
+                    </div>
                 </div>
+                
+                <!-- Alerta de Stock Bajo -->
+                <div id="low-stock-alert" style="display: none; background: #fff3cd; border: 2px solid #ffc107; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <h3 style="color: #856404; margin-bottom: 10px;">⚠️ Productos con Stock Bajo</h3>
+                    <div id="low-stock-list"></div>
+                </div>
+                
                 <div class="recent-sales">
                     <h3>Ventas Recientes</h3>
                     <div id="recent-sales-list"></div>
@@ -155,6 +172,13 @@
                 <h2>Gestión de Productos</h2>
                 <button id="add-product-btn" class="btn btn-primary manager-only">➕ Agregar Producto</button>
                 <div id="products-table"></div>
+            </div>
+
+            <!-- Proveedores -->
+            <div id="suppliers-section" class="content-section">
+                <h2>Gestión de Proveedores</h2>
+                <button id="add-supplier-btn" class="btn btn-primary manager-only">➕ Agregar Proveedor</button>
+                <div id="suppliers-table"></div>
             </div>
 
             <!-- Clientes -->

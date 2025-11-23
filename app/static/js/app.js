@@ -11,6 +11,7 @@ let CURRENT_USER = (() => {
     }
 })();
 let CART = [];
+let SUPPLIERS = [];
 
 // ========== UTILIDADES ==========
 function showScreen(screenId) {
@@ -61,7 +62,6 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
         }
     };
     
-    // Obtener el token actualizado del localStorage
     const currentToken = localStorage.getItem('token');
     
     if (currentToken) {
@@ -75,7 +75,6 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     try {
         const response = await fetch(API_URL + endpoint, options);
         
-        // Si es 401, el token expiró o es inválido
         if (response.status === 401) {
             localStorage.clear();
             TOKEN = null;
@@ -109,21 +108,15 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     try {
         const data = await apiRequest('/auth/login', 'POST', { username, password });
         
-        console.log('Login response:', data); // Debug
-        
         if (!data.access_token || !data.user) {
             throw new Error('Respuesta inválida del servidor');
         }
         
-        // Guardar token y usuario
         TOKEN = data.access_token;
         CURRENT_USER = data.user;
         
         localStorage.setItem('token', TOKEN);
         localStorage.setItem('user', JSON.stringify(CURRENT_USER));
-        
-        console.log('Token guardado:', TOKEN); // Debug
-        console.log('Usuario guardado:', CURRENT_USER); // Debug
         
         document.getElementById('user-info').textContent = `👤 ${CURRENT_USER.username} (${CURRENT_USER.role})`;
         document.body.className = `role-${CURRENT_USER.role}`;
@@ -152,7 +145,6 @@ document.querySelectorAll('.menu-item').forEach(item => {
         const section = item.dataset.section;
         showSection(section);
         
-        // Cargar datos según la sección
         switch(section) {
             case 'dashboard':
                 loadDashboard();
@@ -165,6 +157,9 @@ document.querySelectorAll('.menu-item').forEach(item => {
                 break;
             case 'products':
                 loadProducts();
+                break;
+            case 'suppliers':
+                loadSuppliers();
                 break;
             case 'customers':
                 loadCustomers();
@@ -183,9 +178,29 @@ document.querySelectorAll('.menu-item').forEach(item => {
 async function loadDashboard() {
     try {
         const data = await apiRequest('/dashboard');
+        const products = await apiRequest('/products');
+        
         document.getElementById('total-sales').textContent = `$${data.total_sales.toFixed(2)}`;
         document.getElementById('total-products').textContent = data.total_products;
         document.getElementById('total-customers').textContent = data.total_customers;
+        document.getElementById('total-suppliers').textContent = data.total_suppliers || 0;
+        
+        // Mostrar alerta de productos con stock bajo
+        const lowStockProducts = products.filter(p => p.is_low_stock);
+        const lowStockAlert = document.getElementById('low-stock-alert');
+        const lowStockList = document.getElementById('low-stock-list');
+        
+        if (lowStockProducts.length > 0) {
+            lowStockAlert.style.display = 'block';
+            lowStockList.innerHTML = lowStockProducts.map(p => `
+                <div style="padding: 8px; border-bottom: 1px solid #ffc107;">
+                    <strong>${p.name}</strong> - Stock actual: <span style="color: #dc3545; font-weight: bold;">${p.stock}</span> 
+                    (Mínimo: ${p.min_stock}) - Proveedor: ${p.supplier_name || 'Sin proveedor'}
+                </div>
+            `).join('');
+        } else {
+            lowStockAlert.style.display = 'none';
+        }
         
         const recentSalesList = document.getElementById('recent-sales-list');
         recentSalesList.innerHTML = data.recent_sales.map(sale => `
@@ -202,24 +217,26 @@ async function loadDashboard() {
 // ========== SALES PAGE ==========
 async function loadSalesPage() {
     try {
-        // Cargar productos
         const products = await apiRequest('/products');
         const productsGrid = document.getElementById('products-grid');
-        productsGrid.innerHTML = products.map(p => `
-            <div class="product-card" onclick="addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.stock})">
-                <h4>${p.name}</h4>
-                <p class="price">$${p.price.toFixed(2)}</p>
-                <p class="stock">Stock: ${p.stock}</p>
-            </div>
-        `).join('');
+        productsGrid.innerHTML = products.map(p => {
+            const lowStockClass = p.is_low_stock ? 'style="border-color: #dc3545;"' : '';
+            const lowStockBadge = p.is_low_stock ? '<span style="color: #dc3545; font-size: 11px;">⚠️ Stock Bajo</span>' : '';
+            return `
+                <div class="product-card" ${lowStockClass} onclick="addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.stock})">
+                    <h4>${p.name}</h4>
+                    <p class="price">$${p.price.toFixed(2)}</p>
+                    <p class="stock">Stock: ${p.stock}</p>
+                    ${lowStockBadge}
+                </div>
+            `;
+        }).join('');
         
-        // Cargar clientes
         const customers = await apiRequest('/customers');
         const customerSelect = document.getElementById('cart-customer');
         customerSelect.innerHTML = '<option value="">Sin cliente</option>' + 
             customers.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
         
-        // Búsqueda de productos
         document.getElementById('search-product').addEventListener('input', (e) => {
             const search = e.target.value.toLowerCase();
             document.querySelectorAll('.product-card').forEach(card => {
@@ -327,7 +344,7 @@ document.getElementById('complete-sale-btn').addEventListener('click', async () 
         alert(`✅ Venta completada! Total: $${result.total.toFixed(2)}`);
         CART = [];
         updateCartDisplay();
-        loadSalesPage(); // Recargar productos (stock actualizado)
+        loadSalesPage();
     } catch (error) {
         alert('Error al completar la venta: ' + error.message);
     }
@@ -426,29 +443,40 @@ async function loadProducts() {
                             <th>ID</th>
                             <th>Nombre</th>
                             <th>Categoría</th>
+                            <th>Proveedor</th>
                             <th>Precio</th>
                             <th>Stock</th>
+                            <th>Stock Mín</th>
+                            <th>Estado</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
-                        ${products.map(p => `
-                            <tr>
-                                <td>${p.id}</td>
-                                <td>${p.name}</td>
-                                <td>${p.category || 'N/A'}</td>
-                                <td>$${p.price.toFixed(2)}</td>
-                                <td>${p.stock}</td>
-                                <td class="actions">
-                                    ${CURRENT_USER.role !== 'viewer' ? `
-                                        <button class="btn btn-small btn-primary" onclick="editProduct(${p.id})">Editar</button>
-                                        ${CURRENT_USER.role === 'admin' ? 
-                                            `<button class="btn btn-small btn-danger" onclick="deleteProduct(${p.id})">Eliminar</button>` 
-                                            : ''}
-                                    ` : ''}
-                                </td>
-                            </tr>
-                        `).join('')}
+                        ${products.map(p => {
+                            const stockStatus = p.is_low_stock ? 
+                                '<span style="color: #dc3545; font-weight: bold;">⚠️ Bajo</span>' : 
+                                '<span style="color: #28a745;">✓ OK</span>';
+                            return `
+                                <tr ${p.is_low_stock ? 'style="background-color: #fff3cd;"' : ''}>
+                                    <td>${p.id}</td>
+                                    <td>${p.name}</td>
+                                    <td>${p.category || 'N/A'}</td>
+                                    <td>${p.supplier_name || 'Sin proveedor'}</td>
+                                    <td>$${p.price.toFixed(2)}</td>
+                                    <td>${p.stock}</td>
+                                    <td>${p.min_stock}</td>
+                                    <td>${stockStatus}</td>
+                                    <td class="actions">
+                                        ${CURRENT_USER.role !== 'viewer' ? `
+                                            <button class="btn btn-small btn-primary" onclick="editProduct(${p.id})">Editar</button>
+                                            ${CURRENT_USER.role === 'admin' ? 
+                                                `<button class="btn btn-small btn-danger" onclick="deleteProduct(${p.id})">Eliminar</button>` 
+                                                : ''}
+                                        ` : ''}
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
                     </tbody>
                 </table>
             </div>
@@ -458,43 +486,67 @@ async function loadProducts() {
     }
 }
 
-document.getElementById('add-product-btn').addEventListener('click', () => {
-    showModal('Agregar Producto', `
-        <div class="form-group">
-            <label>Nombre:</label>
-            <input type="text" name="name" required>
-        </div>
-        <div class="form-group">
-            <label>Descripción:</label>
-            <textarea name="description" rows="3"></textarea>
-        </div>
-        <div class="form-group">
-            <label>Precio:</label>
-            <input type="number" name="price" step="0.01" required>
-        </div>
-        <div class="form-group">
-            <label>Stock:</label>
-            <input type="number" name="stock" required>
-        </div>
-        <div class="form-group">
-            <label>Categoría:</label>
-            <input type="text" name="category">
-        </div>
-    `, async (formData) => {
-        const data = Object.fromEntries(formData);
-        data.price = parseFloat(data.price);
-        data.stock = parseInt(data.stock);
+document.getElementById('add-product-btn').addEventListener('click', async () => {
+    try {
+        SUPPLIERS = await apiRequest('/suppliers');
+        const suppliersOptions = SUPPLIERS.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
         
-        await apiRequest('/products', 'POST', data);
-        alert('Producto agregado');
-        loadProducts();
-    });
+        showModal('Agregar Producto', `
+            <div class="form-group">
+                <label>Nombre:</label>
+                <input type="text" name="name" required>
+            </div>
+            <div class="form-group">
+                <label>Descripción:</label>
+                <textarea name="description" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+                <label>Precio:</label>
+                <input type="number" name="price" step="0.01" required>
+            </div>
+            <div class="form-group">
+                <label>Stock Actual:</label>
+                <input type="number" name="stock" required>
+            </div>
+            <div class="form-group">
+                <label>Stock Mínimo:</label>
+                <input type="number" name="min_stock" value="10" required>
+            </div>
+            <div class="form-group">
+                <label>Categoría:</label>
+                <input type="text" name="category">
+            </div>
+            <div class="form-group">
+                <label>Proveedor:</label>
+                <select name="supplier_id">
+                    <option value="">Sin proveedor</option>
+                    ${suppliersOptions}
+                </select>
+            </div>
+        `, async (formData) => {
+            const data = Object.fromEntries(formData);
+            data.price = parseFloat(data.price);
+            data.stock = parseInt(data.stock);
+            data.min_stock = parseInt(data.min_stock);
+            data.supplier_id = data.supplier_id ? parseInt(data.supplier_id) : null;
+            
+            await apiRequest('/products', 'POST', data);
+            alert('Producto agregado');
+            loadProducts();
+        });
+    } catch (error) {
+        alert('Error al cargar proveedores');
+    }
 });
 
 async function editProduct(id) {
     try {
         const products = await apiRequest('/products');
+        SUPPLIERS = await apiRequest('/suppliers');
         const product = products.find(p => p.id === id);
+        const suppliersOptions = SUPPLIERS.map(s => 
+            `<option value="${s.id}" ${product.supplier_id === s.id ? 'selected' : ''}>${s.name}</option>`
+        ).join('');
         
         showModal('Editar Producto', `
             <div class="form-group">
@@ -510,17 +562,30 @@ async function editProduct(id) {
                 <input type="number" name="price" value="${product.price}" step="0.01" required>
             </div>
             <div class="form-group">
-                <label>Stock:</label>
+                <label>Stock Actual:</label>
                 <input type="number" name="stock" value="${product.stock}" required>
+            </div>
+            <div class="form-group">
+                <label>Stock Mínimo:</label>
+                <input type="number" name="min_stock" value="${product.min_stock}" required>
             </div>
             <div class="form-group">
                 <label>Categoría:</label>
                 <input type="text" name="category" value="${product.category || ''}">
             </div>
+            <div class="form-group">
+                <label>Proveedor:</label>
+                <select name="supplier_id">
+                    <option value="">Sin proveedor</option>
+                    ${suppliersOptions}
+                </select>
+            </div>
         `, async (formData) => {
             const data = Object.fromEntries(formData);
             data.price = parseFloat(data.price);
             data.stock = parseInt(data.stock);
+            data.min_stock = parseInt(data.min_stock);
+            data.supplier_id = data.supplier_id ? parseInt(data.supplier_id) : null;
             
             await apiRequest(`/products/${id}`, 'PUT', data);
             alert('Producto actualizado');
@@ -540,6 +605,133 @@ async function deleteProduct(id) {
         loadProducts();
     } catch (error) {
         alert('Error al eliminar el producto');
+    }
+}
+
+// ========== SUPPLIERS ==========
+async function loadSuppliers() {
+    try {
+        const suppliers = await apiRequest('/suppliers');
+        const suppliersTable = document.getElementById('suppliers-table');
+        
+        suppliersTable.innerHTML = `
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nombre</th>
+                            <th>Contacto</th>
+                            <th>Email</th>
+                            <th>Teléfono</th>
+                            <th>Dirección</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${suppliers.map(s => `
+                            <tr>
+                                <td>${s.id}</td>
+                                <td>${s.name}</td>
+                                <td>${s.contact_name || 'N/A'}</td>
+                                <td>${s.email || 'N/A'}</td>
+                                <td>${s.phone || 'N/A'}</td>
+                                <td>${s.address || 'N/A'}</td>
+                                <td class="actions">
+                                    ${CURRENT_USER.role !== 'viewer' ? `
+                                        <button class="btn btn-small btn-primary" onclick="editSupplier(${s.id})">Editar</button>
+                                        ${CURRENT_USER.role === 'admin' ? 
+                                            `<button class="btn btn-small btn-danger" onclick="deleteSupplier(${s.id})">Eliminar</button>` 
+                                            : ''}
+                                    ` : ''}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading suppliers:', error);
+    }
+}
+
+document.getElementById('add-supplier-btn').addEventListener('click', () => {
+    showModal('Agregar Proveedor', `
+        <div class="form-group">
+            <label>Nombre de la Empresa:</label>
+            <input type="text" name="name" required>
+        </div>
+        <div class="form-group">
+            <label>Nombre del Contacto:</label>
+            <input type="text" name="contact_name">
+        </div>
+        <div class="form-group">
+            <label>Email:</label>
+            <input type="email" name="email">
+        </div>
+        <div class="form-group">
+            <label>Teléfono:</label>
+            <input type="tel" name="phone">
+        </div>
+        <div class="form-group">
+            <label>Dirección:</label>
+            <textarea name="address" rows="2"></textarea>
+        </div>
+    `, async (formData) => {
+        const data = Object.fromEntries(formData);
+        await apiRequest('/suppliers', 'POST', data);
+        alert('Proveedor agregado');
+        loadSuppliers();
+    });
+});
+
+async function editSupplier(id) {
+    try {
+        const suppliers = await apiRequest('/suppliers');
+        const supplier = suppliers.find(s => s.id === id);
+        
+        showModal('Editar Proveedor', `
+            <div class="form-group">
+                <label>Nombre de la Empresa:</label>
+                <input type="text" name="name" value="${supplier.name}" required>
+            </div>
+            <div class="form-group">
+                <label>Nombre del Contacto:</label>
+                <input type="text" name="contact_name" value="${supplier.contact_name || ''}">
+            </div>
+            <div class="form-group">
+                <label>Email:</label>
+                <input type="email" name="email" value="${supplier.email || ''}">
+            </div>
+            <div class="form-group">
+                <label>Teléfono:</label>
+                <input type="tel" name="phone" value="${supplier.phone || ''}">
+            </div>
+            <div class="form-group">
+                <label>Dirección:</label>
+                <textarea name="address" rows="2">${supplier.address || ''}</textarea>
+            </div>
+        `, async (formData) => {
+            const data = Object.fromEntries(formData);
+            await apiRequest(`/suppliers/${id}`, 'PUT', data);
+            alert('Proveedor actualizado');
+            loadSuppliers();
+        });
+    } catch (error) {
+        alert('Error al cargar el proveedor');
+    }
+}
+
+async function deleteSupplier(id) {
+    if (!confirm('¿Eliminar este proveedor?')) return;
+    
+    try {
+        await apiRequest(`/suppliers/${id}`, 'DELETE');
+        alert('Proveedor eliminado');
+        loadSuppliers();
+    } catch (error) {
+        alert('Error al eliminar el proveedor');
     }
 }
 
@@ -627,6 +819,7 @@ async function editCustomer(id) {
             </div>
             <div class="form-group">
                 <label>Email:</label>
+                <input type="email"
                 <input type="email" name="email" value="${customer.email || ''}">
             </div>
             <div class="form-group">
