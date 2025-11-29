@@ -144,8 +144,19 @@
                             </select>
                         </div>
                         <div id="cart-items"></div>
-                        <div class="cart-total">
-                            <h3>Total: $<span id="cart-total">0.00</span></h3>
+                        <div class="cart-totals" style="background: #f5f6fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span>Subtotal:</span>
+                                <span>$<span id="cart-subtotal">0.00</span></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                <span>IVA:</span>
+                                <span>$<span id="cart-iva">0.00</span></span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 20px; font-weight: bold; border-top: 2px solid #ddd; padding-top: 10px; margin-top: 10px;">
+                                <span>Total:</span>
+                                <span>$<span id="cart-total">0.00</span></span>
+                            </div>
                         </div>
                         <div class="cart-payment">
                             <label>Método de pago:</label>

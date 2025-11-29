@@ -27,6 +27,15 @@ def migrate_database(app):
                 db.session.commit()
                 print("✅ Columna 'min_stock' agregada")
             
+            # Agregar iva si no existe
+            if 'iva' not in existing_columns:
+                print("➕ Agregando columna 'iva' a products...")
+                db.session.execute(text(
+                    "ALTER TABLE products ADD COLUMN iva INTEGER DEFAULT 16"
+                ))
+                db.session.commit()
+                print("✅ Columna 'iva' agregada con valor por defecto de 16%")
+            
             # Agregar supplier_id si no existe
             if 'supplier_id' not in existing_columns:
                 print("➕ Agregando columna 'supplier_id' a products...")
@@ -47,6 +56,28 @@ def migrate_database(app):
                 except Exception as e:
                     print(f"ℹ️  Foreign key ya existe o no se pudo agregar")
                     db.session.rollback()
+            
+            # Actualizar productos existentes sin proveedor asignándoles el primer proveedor disponible
+            result = db.session.execute(text(
+                "SELECT COUNT(*) FROM products WHERE supplier_id IS NULL"
+            ))
+            null_supplier_count = result.scalar()
+            
+            if null_supplier_count > 0:
+                print(f"⚠️  Hay {null_supplier_count} productos sin proveedor")
+                # Obtener el primer proveedor
+                result = db.session.execute(text("SELECT id FROM suppliers LIMIT 1"))
+                first_supplier = result.scalar()
+                
+                if first_supplier:
+                    print(f"➕ Asignando proveedor por defecto (ID: {first_supplier}) a productos sin proveedor...")
+                    db.session.execute(text(
+                        f"UPDATE products SET supplier_id = {first_supplier} WHERE supplier_id IS NULL"
+                    ))
+                    db.session.commit()
+                    print("✅ Productos actualizados con proveedor por defecto")
+                else:
+                    print("⚠️  No hay proveedores disponibles. Crea al menos un proveedor antes de agregar productos.")
                     
         except Exception as e:
             print(f"⚠️  Error en migración (puede ser normal si ya se ejecutó): {e}")
@@ -148,67 +179,67 @@ def create_app():
                 productos = [
                     # Cervezas
                     Product(name="Corona Extra 355ml", description="Cerveza clara mexicana", 
-                           price=25.00, stock=120, min_stock=50, category="Cervezas", supplier=modelo),
+                           price=25.00, iva=16, stock=120, min_stock=50, category="Cervezas", supplier=modelo),
                     Product(name="Modelo Especial 355ml", description="Cerveza tipo pilsner", 
-                           price=23.00, stock=100, min_stock=50, category="Cervezas", supplier=modelo),
+                           price=23.00, iva=16, stock=100, min_stock=50, category="Cervezas", supplier=modelo),
                     Product(name="Victoria 355ml", description="Cerveza tipo viena", 
-                           price=22.00, stock=90, min_stock=40, category="Cervezas", supplier=modelo),
+                           price=22.00, iva=16, stock=90, min_stock=40, category="Cervezas", supplier=modelo),
                     Product(name="Heineken 355ml", description="Cerveza importada", 
-                           price=30.00, stock=80, min_stock=40, category="Cervezas", supplier=heineken),
+                           price=30.00, iva=16, stock=80, min_stock=40, category="Cervezas", supplier=heineken),
                     Product(name="Tecate Light 355ml", description="Cerveza light", 
-                           price=20.00, stock=110, min_stock=50, category="Cervezas", supplier=heineken),
+                           price=20.00, iva=16, stock=110, min_stock=50, category="Cervezas", supplier=heineken),
                     
                     # Vinos
                     Product(name="Vino L.A. Cetto Tinto", description="Vino tinto 750ml", 
-                           price=180.00, stock=40, min_stock=15, category="Vinos", supplier=cetto),
+                           price=180.00, iva=16, stock=40, min_stock=15, category="Vinos", supplier=cetto),
                     Product(name="Vino L.A. Cetto Blanco", description="Vino blanco 750ml", 
-                           price=180.00, stock=35, min_stock=15, category="Vinos", supplier=cetto),
+                           price=180.00, iva=16, stock=35, min_stock=15, category="Vinos", supplier=cetto),
                     Product(name="Vino Santo Tomás Tinto", description="Vino tinto 750ml", 
-                           price=220.00, stock=30, min_stock=10, category="Vinos", supplier=cetto),
+                           price=220.00, iva=16, stock=30, min_stock=10, category="Vinos", supplier=cetto),
                     Product(name="Vino Casa Madero Rosado", description="Vino rosado 750ml", 
-                           price=200.00, stock=25, min_stock=10, category="Vinos", supplier=cetto),
+                           price=200.00, iva=16, stock=25, min_stock=10, category="Vinos", supplier=cetto),
                     
                     # Licores y Destilados
                     Product(name="Tequila José Cuervo Especial", description="Tequila reposado 750ml", 
-                           price=280.00, stock=50, min_stock=20, category="Tequilas", supplier=cuervo),
+                           price=280.00, iva=16, stock=50, min_stock=20, category="Tequilas", supplier=cuervo),
                     Product(name="Tequila Jimador Reposado", description="Tequila 100% agave 750ml", 
-                           price=320.00, stock=45, min_stock=20, category="Tequilas", supplier=cuervo),
+                           price=320.00, iva=16, stock=45, min_stock=20, category="Tequilas", supplier=cuervo),
                     Product(name="Tequila Herradura Blanco", description="Tequila blanco 750ml", 
-                           price=450.00, stock=30, min_stock=15, category="Tequilas", supplier=cuervo),
+                           price=450.00, iva=16, stock=30, min_stock=15, category="Tequilas", supplier=cuervo),
                     Product(name="Mezcal 400 Conejos", description="Mezcal joven 750ml", 
-                           price=380.00, stock=35, min_stock=15, category="Mezcales", supplier=distribuidor),
+                           price=380.00, iva=16, stock=35, min_stock=15, category="Mezcales", supplier=distribuidor),
                     Product(name="Ron Bacardi Blanco", description="Ron blanco 750ml", 
-                           price=250.00, stock=40, min_stock=20, category="Rones", supplier=distribuidor),
+                           price=250.00, iva=16, stock=40, min_stock=20, category="Rones", supplier=distribuidor),
                     Product(name="Vodka Absolut", description="Vodka premium 750ml", 
-                           price=420.00, stock=30, min_stock=15, category="Vodkas", supplier=distribuidor),
+                           price=420.00, iva=16, stock=30, min_stock=15, category="Vodkas", supplier=distribuidor),
                     Product(name="Whisky Johnnie Walker Red", description="Whisky escocés 750ml", 
-                           price=480.00, stock=25, min_stock=10, category="Whiskys", supplier=distribuidor),
+                           price=480.00, iva=16, stock=25, min_stock=10, category="Whiskys", supplier=distribuidor),
                     
                     # Aperitivos y Mezclas
                     Product(name="Squirt 600ml", description="Refresco de toronja", 
-                           price=15.00, stock=100, min_stock=30, category="Refrescos", supplier=distribuidor),
+                           price=15.00, iva=16, stock=100, min_stock=30, category="Refrescos", supplier=distribuidor),
                     Product(name="Coca Cola 600ml", description="Refresco de cola", 
-                           price=15.00, stock=100, min_stock=30, category="Refrescos", supplier=distribuidor),
+                           price=15.00, iva=16, stock=100, min_stock=30, category="Refrescos", supplier=distribuidor),
                     Product(name="Agua Mineral Topo Chico", description="Agua mineral 355ml", 
-                           price=18.00, stock=80, min_stock=25, category="Refrescos", supplier=distribuidor),
+                           price=18.00, iva=16, stock=80, min_stock=25, category="Refrescos", supplier=distribuidor),
                     Product(name="Jugo Jumex Naranja 1L", description="Jugo de naranja", 
-                           price=25.00, stock=60, min_stock=20, category="Jugos", supplier=distribuidor),
+                           price=25.00, iva=16, stock=60, min_stock=20, category="Jugos", supplier=distribuidor),
                     
                     # Botanas
                     Product(name="Cacahuates Japoneses", description="Botana 150g", 
-                           price=30.00, stock=70, min_stock=30, category="Botanas", supplier=distribuidor),
+                           price=30.00, iva=16, stock=70, min_stock=30, category="Botanas", supplier=distribuidor),
                     Product(name="Papas Sabritas Original", description="Papas fritas 170g", 
-                           price=35.00, stock=60, min_stock=25, category="Botanas", supplier=distribuidor),
+                           price=35.00, iva=16, stock=60, min_stock=25, category="Botanas", supplier=distribuidor),
                     Product(name="Chicharrón Preparado", description="Botana 100g", 
-                           price=25.00, stock=50, min_stock=20, category="Botanas", supplier=distribuidor),
+                           price=25.00, iva=16, stock=50, min_stock=20, category="Botanas", supplier=distribuidor),
                     Product(name="Mix de Nueces", description="Mezcla de nueces 200g", 
-                           price=55.00, stock=40, min_stock=15, category="Botanas", supplier=distribuidor),
+                           price=55.00, iva=16, stock=40, min_stock=15, category="Botanas", supplier=distribuidor),
                     
                     # Cigarros
                     Product(name="Marlboro Rojo", description="Cajetilla 20 cigarros", 
-                           price=75.00, stock=100, min_stock=40, category="Cigarros", supplier=distribuidor),
+                           price=75.00, iva=16, stock=100, min_stock=40, category="Cigarros", supplier=distribuidor),
                     Product(name="Camel Blue", description="Cajetilla 20 cigarros", 
-                           price=70.00, stock=80, min_stock=35, category="Cigarros", supplier=distribuidor),
+                           price=70.00, iva=16, stock=80, min_stock=35, category="Cigarros", supplier=distribuidor),
                 ]
                 for p in productos:
                     db.session.add(p)

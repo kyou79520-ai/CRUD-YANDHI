@@ -222,10 +222,13 @@ async function loadSalesPage() {
         productsGrid.innerHTML = products.map(p => {
             const lowStockClass = p.is_low_stock ? 'style="border-color: #dc3545;"' : '';
             const lowStockBadge = p.is_low_stock ? '<span style="color: #dc3545; font-size: 11px;">⚠️ Stock Bajo</span>' : '';
+            const iva = p.iva || 16;
+            const priceWithIVA = p.price * (1 + iva / 100);
             return `
-                <div class="product-card" ${lowStockClass} onclick="addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.stock})">
+                <div class="product-card" ${lowStockClass} onclick="addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.stock}, ${iva})">
                     <h4>${p.name}</h4>
                     <p class="price">$${p.price.toFixed(2)}</p>
+                    <p style="font-size: 11px; color: #666;">+ IVA (${iva}%): $${priceWithIVA.toFixed(2)}</p>
                     <p class="stock">Stock: ${p.stock}</p>
                     ${lowStockBadge}
                 </div>
@@ -251,7 +254,7 @@ async function loadSalesPage() {
     }
 }
 
-function addToCart(productId, name, price, stock) {
+function addToCart(productId, name, price, stock, iva = 16) {
     const existing = CART.find(item => item.productId === productId);
     
     if (existing) {
@@ -262,7 +265,7 @@ function addToCart(productId, name, price, stock) {
             return;
         }
     } else {
-        CART.push({ productId, name, price, quantity: 1, stock });
+        CART.push({ productId, name, price, quantity: 1, stock, iva });
     }
     
     updateCartDisplay();
@@ -271,18 +274,28 @@ function addToCart(productId, name, price, stock) {
 function updateCartDisplay() {
     const cartItems = document.getElementById('cart-items');
     const cartTotal = document.getElementById('cart-total');
+    const cartSubtotal = document.getElementById('cart-subtotal');
+    const cartIVA = document.getElementById('cart-iva');
     
     if (CART.length === 0) {
         cartItems.innerHTML = '<p style="text-align: center; color: #999;">Carrito vacío</p>';
         cartTotal.textContent = '0.00';
+        if (cartSubtotal) cartSubtotal.textContent = '0.00';
+        if (cartIVA) cartIVA.textContent = '0.00';
         return;
     }
     
-    cartItems.innerHTML = CART.map((item, index) => `
+    cartItems.innerHTML = CART.map((item, index) => {
+        const subtotal = item.price * item.quantity;
+        const ivaAmount = subtotal * (item.iva / 100);
+        const totalWithIVA = subtotal + ivaAmount;
+        
+        return `
         <div class="cart-item">
             <div class="cart-item-info">
                 <h4>${item.name}</h4>
-                <p>$${item.price.toFixed(2)} c/u</p>
+                <p>$${item.price.toFixed(2)} c/u (IVA: ${item.iva}%)</p>
+                <small style="color: #666;">Subtotal: $${subtotal.toFixed(2)} + IVA: $${ivaAmount.toFixed(2)}</small>
             </div>
             <div class="cart-item-qty">
                 <button onclick="updateCartQty(${index}, -1)">-</button>
@@ -291,9 +304,18 @@ function updateCartDisplay() {
                 <button class="cart-item-remove" onclick="removeFromCart(${index})">🗑️</button>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
     
-    const total = CART.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const subtotal = CART.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const totalIVA = CART.reduce((sum, item) => {
+        const itemSubtotal = item.price * item.quantity;
+        return sum + (itemSubtotal * (item.iva / 100));
+    }, 0);
+    const total = subtotal + totalIVA;
+    
+    if (cartSubtotal) cartSubtotal.textContent = subtotal.toFixed(2);
+    if (cartIVA) cartIVA.textContent = totalIVA.toFixed(2);
     cartTotal.textContent = total.toFixed(2);
 }
 
@@ -435,7 +457,15 @@ async function loadProducts() {
         const products = await apiRequest('/products');
         const productsTable = document.getElementById('products-table');
         
-        productsTable.innerHTML = `
+        // Agregar buscador
+        const searchHTML = `
+            <div style="margin-bottom: 20px;">
+                <input type="text" id="product-search" placeholder="🔍 Buscar producto por nombre, categoría o proveedor..." 
+                       style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
+            </div>
+        `;
+        
+        productsTable.innerHTML = searchHTML + `
             <div class="table-container">
                 <table>
                     <thead>
@@ -445,24 +475,31 @@ async function loadProducts() {
                             <th>Categoría</th>
                             <th>Proveedor</th>
                             <th>Precio</th>
+                            <th>IVA (%)</th>
+                            <th>Precio + IVA</th>
                             <th>Stock</th>
                             <th>Stock Mín</th>
                             <th>Estado</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="products-tbody">
                         ${products.map(p => {
                             const stockStatus = p.is_low_stock ? 
                                 '<span style="color: #dc3545; font-weight: bold;">⚠️ Bajo</span>' : 
                                 '<span style="color: #28a745;">✓ OK</span>';
+                            const iva = p.iva || 16;
+                            const priceWithIVA = p.price * (1 + iva / 100);
                             return `
-                                <tr ${p.is_low_stock ? 'style="background-color: #fff3cd;"' : ''}>
+                                <tr ${p.is_low_stock ? 'style="background-color: #fff3cd;"' : ''} 
+                                    data-search="${p.name.toLowerCase()} ${(p.category || '').toLowerCase()} ${(p.supplier_name || '').toLowerCase()}">
                                     <td>${p.id}</td>
                                     <td>${p.name}</td>
                                     <td>${p.category || 'N/A'}</td>
                                     <td>${p.supplier_name || 'Sin proveedor'}</td>
                                     <td>$${p.price.toFixed(2)}</td>
+                                    <td>${iva}%</td>
+                                    <td>$${priceWithIVA.toFixed(2)}</td>
                                     <td>${p.stock}</td>
                                     <td>${p.min_stock}</td>
                                     <td>${stockStatus}</td>
@@ -481,6 +518,16 @@ async function loadProducts() {
                 </table>
             </div>
         `;
+        
+        // Agregar evento de búsqueda
+        document.getElementById('product-search').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const rows = document.querySelectorAll('#products-tbody tr');
+            rows.forEach(row => {
+                const searchText = row.dataset.search || '';
+                row.style.display = searchText.includes(searchTerm) ? '' : 'none';
+            });
+        });
     } catch (error) {
         console.error('Error loading products:', error);
     }
@@ -501,8 +548,12 @@ document.getElementById('add-product-btn').addEventListener('click', async () =>
                 <textarea name="description" rows="3"></textarea>
             </div>
             <div class="form-group">
-                <label>Precio:</label>
+                <label>Precio (sin IVA):</label>
                 <input type="number" name="price" step="0.01" required>
+            </div>
+            <div class="form-group">
+                <label>IVA (%):</label>
+                <input type="number" name="iva" value="16" min="0" max="100" required>
             </div>
             <div class="form-group">
                 <label>Stock Actual:</label>
@@ -518,17 +569,23 @@ document.getElementById('add-product-btn').addEventListener('click', async () =>
             </div>
             <div class="form-group">
                 <label>Proveedor:</label>
-                <select name="supplier_id">
-                    <option value="">Sin proveedor</option>
+                <select name="supplier_id" required>
+                    <option value="">Seleccione un proveedor</option>
                     ${suppliersOptions}
                 </select>
             </div>
         `, async (formData) => {
             const data = Object.fromEntries(formData);
             data.price = parseFloat(data.price);
+            data.iva = parseInt(data.iva);
             data.stock = parseInt(data.stock);
             data.min_stock = parseInt(data.min_stock);
             data.supplier_id = data.supplier_id ? parseInt(data.supplier_id) : null;
+            
+            if (!data.supplier_id) {
+                alert('Debe seleccionar un proveedor');
+                return;
+            }
             
             await apiRequest('/products', 'POST', data);
             alert('Producto agregado');
@@ -558,8 +615,12 @@ async function editProduct(id) {
                 <textarea name="description" rows="3">${product.description || ''}</textarea>
             </div>
             <div class="form-group">
-                <label>Precio:</label>
+                <label>Precio (sin IVA):</label>
                 <input type="number" name="price" value="${product.price}" step="0.01" required>
+            </div>
+            <div class="form-group">
+                <label>IVA (%):</label>
+                <input type="number" name="iva" value="${product.iva || 16}" min="0" max="100" required>
             </div>
             <div class="form-group">
                 <label>Stock Actual:</label>
@@ -575,17 +636,23 @@ async function editProduct(id) {
             </div>
             <div class="form-group">
                 <label>Proveedor:</label>
-                <select name="supplier_id">
-                    <option value="">Sin proveedor</option>
+                <select name="supplier_id" required>
+                    <option value="">Seleccione un proveedor</option>
                     ${suppliersOptions}
                 </select>
             </div>
         `, async (formData) => {
             const data = Object.fromEntries(formData);
             data.price = parseFloat(data.price);
+            data.iva = parseInt(data.iva);
             data.stock = parseInt(data.stock);
             data.min_stock = parseInt(data.min_stock);
             data.supplier_id = data.supplier_id ? parseInt(data.supplier_id) : null;
+            
+            if (!data.supplier_id) {
+                alert('Debe seleccionar un proveedor');
+                return;
+            }
             
             await apiRequest(`/products/${id}`, 'PUT', data);
             alert('Producto actualizado');
@@ -614,7 +681,15 @@ async function loadSuppliers() {
         const suppliers = await apiRequest('/suppliers');
         const suppliersTable = document.getElementById('suppliers-table');
         
-        suppliersTable.innerHTML = `
+        // Agregar buscador
+        const searchHTML = `
+            <div style="margin-bottom: 20px;">
+                <input type="text" id="supplier-search" placeholder="🔍 Buscar proveedor por nombre, contacto o email..." 
+                       style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
+            </div>
+        `;
+        
+        suppliersTable.innerHTML = searchHTML + `
             <div class="table-container">
                 <table>
                     <thead>
@@ -628,9 +703,9 @@ async function loadSuppliers() {
                             <th>Acciones</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="suppliers-tbody">
                         ${suppliers.map(s => `
-                            <tr>
+                            <tr data-search="${s.name.toLowerCase()} ${(s.contact_name || '').toLowerCase()} ${(s.email || '').toLowerCase()}">
                                 <td>${s.id}</td>
                                 <td>${s.name}</td>
                                 <td>${s.contact_name || 'N/A'}</td>
@@ -651,6 +726,16 @@ async function loadSuppliers() {
                 </table>
             </div>
         `;
+        
+        // Agregar evento de búsqueda
+        document.getElementById('supplier-search').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const rows = document.querySelectorAll('#suppliers-tbody tr');
+            rows.forEach(row => {
+                const searchText = row.dataset.search || '';
+                row.style.display = searchText.includes(searchTerm) ? '' : 'none';
+            });
+        });
     } catch (error) {
         console.error('Error loading suppliers:', error);
     }
@@ -741,7 +826,15 @@ async function loadCustomers() {
         const customers = await apiRequest('/customers');
         const customersTable = document.getElementById('customers-table');
         
-        customersTable.innerHTML = `
+        // Agregar buscador
+        const searchHTML = `
+            <div style="margin-bottom: 20px;">
+                <input type="text" id="customer-search" placeholder="🔍 Buscar cliente por nombre, email o teléfono..." 
+                       style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
+            </div>
+        `;
+        
+        customersTable.innerHTML = searchHTML + `
             <div class="table-container">
                 <table>
                     <thead>
@@ -754,9 +847,9 @@ async function loadCustomers() {
                             <th>Acciones</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody id="customers-tbody">
                         ${customers.map(c => `
-                            <tr>
+                            <tr data-search="${c.name.toLowerCase()} ${(c.email || '').toLowerCase()} ${(c.phone || '').toLowerCase()}">
                                 <td>${c.id}</td>
                                 <td>${c.name}</td>
                                 <td>${c.email || 'N/A'}</td>
@@ -776,6 +869,16 @@ async function loadCustomers() {
                 </table>
             </div>
         `;
+        
+        // Agregar evento de búsqueda
+        document.getElementById('customer-search').addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+            const rows = document.querySelectorAll('#customers-tbody tr');
+            rows.forEach(row => {
+                const searchText = row.dataset.search || '';
+                row.style.display = searchText.includes(searchTerm) ? '' : 'none';
+            });
+        });
     } catch (error) {
         console.error('Error loading customers:', error);
     }
@@ -819,7 +922,6 @@ async function editCustomer(id) {
             </div>
             <div class="form-group">
                 <label>Email:</label>
-                <input type="email"
                 <input type="email" name="email" value="${customer.email || ''}">
             </div>
             <div class="form-group">
