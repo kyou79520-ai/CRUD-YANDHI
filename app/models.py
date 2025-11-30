@@ -46,13 +46,12 @@ class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), nullable=False)
     description = db.Column(db.Text)
-    price = db.Column(db.Float, nullable=False)  # Precio sin IVA
+    price = db.Column(db.Float, nullable=False)
+    iva = db.Column(db.Integer, default=16)  # NUEVO: Porcentaje de IVA (default 16%)
     stock = db.Column(db.Integer, default=0)
     min_stock = db.Column(db.Integer, default=10)
     category = db.Column(db.String(100))
-    supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"))
-    include_iva = db.Column(db.Boolean, default=True)  # NUEVO: Si incluye IVA
-    iva_rate = db.Column(db.Float, default=16.0)  # NUEVO: Tasa de IVA (16%)
+    supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"), nullable=False)  # ACTUALIZADO: Ahora es obligatorio
     supplier = db.relationship("Supplier", backref="products")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -64,25 +63,14 @@ class Product(db.Model):
     @property
     def price_with_iva(self):
         """Calcula el precio con IVA incluido"""
-        if self.include_iva:
-            return self.price * (1 + self.iva_rate / 100)
-        return self.price
-    
-    @property
-    def iva_amount(self):
-        """Calcula el monto de IVA"""
-        if self.include_iva:
-            return self.price * (self.iva_rate / 100)
-        return 0
+        return self.price * (1 + (self.iva / 100))
 
 class Sale(db.Model):
     __tablename__ = "sales"
     id = db.Column(db.Integer, primary_key=True)
     customer_id = db.Column(db.Integer, db.ForeignKey("customers.id"))
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    subtotal = db.Column(db.Float, nullable=False)  # NUEVO: Subtotal sin IVA
-    iva = db.Column(db.Float, default=0)  # NUEVO: Monto de IVA
-    total = db.Column(db.Float, nullable=False)  # Total con IVA
+    total = db.Column(db.Float, nullable=False)
     payment_method = db.Column(db.String(50))
     status = db.Column(db.String(50), default="completed")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -96,9 +84,8 @@ class SaleItem(db.Model):
     sale_id = db.Column(db.Integer, db.ForeignKey("sales.id"), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
-    unit_price = db.Column(db.Float, nullable=False)  # Precio unitario sin IVA
-    iva_amount = db.Column(db.Float, default=0)  # NUEVO: Monto de IVA del item
-    subtotal = db.Column(db.Float, nullable=False)  # Subtotal del item con IVA
+    unit_price = db.Column(db.Float, nullable=False)
+    subtotal = db.Column(db.Float, nullable=False)
     
     sale = db.relationship("Sale", backref="items")
     product = db.relationship("Product", backref="sale_items")

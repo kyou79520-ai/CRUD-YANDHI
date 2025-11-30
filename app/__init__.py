@@ -1,7 +1,8 @@
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
+from flask_cors import CORS
 from sqlalchemy import text
 from .config import Config
 from .logger import setup_app_logger
@@ -16,6 +17,12 @@ def migrate_database(app):
         try:
             # Verificar si las columnas existen
             inspector = db.inspect(db.engine)
+            
+            # Verificar que la tabla products exista
+            if 'products' not in inspector.get_table_names():
+                print("⚠️  Tabla 'products' no existe aún, se creará con db.create_all()")
+                return
+            
             existing_columns = [col['name'] for col in inspector.get_columns('products')]
             
             # Agregar min_stock si no existe
@@ -27,14 +34,30 @@ def migrate_database(app):
                 db.session.commit()
                 print("✅ Columna 'min_stock' agregada")
             
-            # Agregar iva si no existe
-            if 'iva' not in existing_columns:
-                print("➕ Agregando columna 'iva' a products...")
+            # Agregar iva_rate si no existe (cambio de 'iva' a 'iva_rate')
+            if 'iva_rate' not in existing_columns:
+                print("➕ Agregando columna 'iva_rate' a products...")
                 db.session.execute(text(
-                    "ALTER TABLE products ADD COLUMN iva INTEGER DEFAULT 16"
+                    "ALTER TABLE products ADD COLUMN iva_rate FLOAT DEFAULT 16.0"
                 ))
                 db.session.commit()
-                print("✅ Columna 'iva' agregada con valor por defecto de 16%")
+                print("✅ Columna 'iva_rate' agregada")
+            
+            # Agregar include_iva si no existe
+            if 'include_iva' not in existing_columns:
+                print("➕ Agregando columna 'include_iva' a products...")
+                # PostgreSQL usa BOOLEAN, MySQL usa TINYINT(1)
+                try:
+                    db.session.execute(text(
+                        "ALTER TABLE products ADD COLUMN include_iva BOOLEAN DEFAULT TRUE"
+                    ))
+                except:
+                    # Fallback para MySQL
+                    db.session.execute(text(
+                        "ALTER TABLE products ADD COLUMN include_iva TINYINT(1) DEFAULT 1"
+                    ))
+                db.session.commit()
+                print("✅ Columna 'include_iva' agregada")
             
             # Agregar supplier_id si no existe
             if 'supplier_id' not in existing_columns:
@@ -53,11 +76,11 @@ def migrate_database(app):
                     ))
                     db.session.commit()
                     print("✅ Foreign key constraint agregada")
-                except Exception as e:
-                    print(f"ℹ️  Foreign key ya existe o no se pudo agregar")
+                except Exception as fk_error:
+                    print(f"ℹ️  Foreign key ya existe o no se pudo agregar: {fk_error}")
                     db.session.rollback()
             
-            # Actualizar productos existentes sin proveedor asignándoles el primer proveedor disponible
+            # Actualizar productos existentes sin proveedor
             result = db.session.execute(text(
                 "SELECT COUNT(*) FROM products WHERE supplier_id IS NULL"
             ))
@@ -70,22 +93,31 @@ def migrate_database(app):
                 first_supplier = result.scalar()
                 
                 if first_supplier:
-                    print(f"➕ Asignando proveedor por defecto (ID: {first_supplier}) a productos sin proveedor...")
+                    print(f"➕ Asignando proveedor por defecto (ID: {first_supplier})...")
                     db.session.execute(text(
                         f"UPDATE products SET supplier_id = {first_supplier} WHERE supplier_id IS NULL"
                     ))
                     db.session.commit()
                     print("✅ Productos actualizados con proveedor por defecto")
                 else:
-                    print("⚠️  No hay proveedores disponibles. Crea al menos un proveedor antes de agregar productos.")
+                    print("⚠️  No hay proveedores disponibles.")
                     
         except Exception as e:
-            print(f"⚠️  Error en migración (puede ser normal si ya se ejecutó): {e}")
+            print(f"⚠️  Error en migración: {e}")
             db.session.rollback()
 
 def create_app():
     app = Flask(__name__, static_folder="static", template_folder="templates")
     app.config.from_object(Config)
+    
+    # Habilitar CORS para permitir peticiones desde el frontend
+    CORS(app, resources={
+        r"/api/*": {
+            "origins": "*",
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"]
+        }
+    })
     
     db.init_app(app)
     migrate.init_app(app, db)
@@ -123,7 +155,7 @@ def create_app():
                 db.session.commit()
                 print("✅ Usuario admin creado (username: admin, password: admin123)")
             else:
-                print("✅ Usuario admin ya existe")
+                print("ℹ️  Usuario admin ya existe")
             
             # Crear usuario manager si no existe
             if not User.query.filter_by(username='manager').first():
@@ -133,6 +165,8 @@ def create_app():
                 db.session.add(manager_user)
                 db.session.commit()
                 print("✅ Usuario manager creado (username: manager, password: manager123)")
+            else:
+                print("ℹ️  Usuario manager ya existe")
             
             # Crear usuario viewer si no existe
             if not User.query.filter_by(username='viewer').first():
@@ -142,6 +176,8 @@ def create_app():
                 db.session.add(viewer_user)
                 db.session.commit()
                 print("✅ Usuario viewer creado (username: viewer, password: viewer123)")
+            else:
+                print("ℹ️  Usuario viewer ya existe")
             
             # Agregar proveedores de ejemplo si no existen
             if Supplier.query.count() == 0:
@@ -179,67 +215,60 @@ def create_app():
                 productos = [
                     # Cervezas
                     Product(name="Corona Extra 355ml", description="Cerveza clara mexicana", 
-                           price=25.00, iva=16, stock=120, min_stock=50, category="Cervezas", supplier=modelo),
+                           price=25.00, iva_rate=16.0, stock=120, min_stock=50, category="Cervezas", 
+                           supplier=modelo, include_iva=True),
                     Product(name="Modelo Especial 355ml", description="Cerveza tipo pilsner", 
-                           price=23.00, iva=16, stock=100, min_stock=50, category="Cervezas", supplier=modelo),
+                           price=23.00, iva_rate=16.0, stock=100, min_stock=50, category="Cervezas", 
+                           supplier=modelo, include_iva=True),
                     Product(name="Victoria 355ml", description="Cerveza tipo viena", 
-                           price=22.00, iva=16, stock=90, min_stock=40, category="Cervezas", supplier=modelo),
+                           price=22.00, iva_rate=16.0, stock=90, min_stock=40, category="Cervezas", 
+                           supplier=modelo, include_iva=True),
                     Product(name="Heineken 355ml", description="Cerveza importada", 
-                           price=30.00, iva=16, stock=80, min_stock=40, category="Cervezas", supplier=heineken),
+                           price=30.00, iva_rate=16.0, stock=80, min_stock=40, category="Cervezas", 
+                           supplier=heineken, include_iva=True),
                     Product(name="Tecate Light 355ml", description="Cerveza light", 
-                           price=20.00, iva=16, stock=110, min_stock=50, category="Cervezas", supplier=heineken),
+                           price=20.00, iva_rate=16.0, stock=110, min_stock=50, category="Cervezas", 
+                           supplier=heineken, include_iva=True),
                     
                     # Vinos
                     Product(name="Vino L.A. Cetto Tinto", description="Vino tinto 750ml", 
-                           price=180.00, iva=16, stock=40, min_stock=15, category="Vinos", supplier=cetto),
+                           price=180.00, iva_rate=16.0, stock=40, min_stock=15, category="Vinos", 
+                           supplier=cetto, include_iva=True),
                     Product(name="Vino L.A. Cetto Blanco", description="Vino blanco 750ml", 
-                           price=180.00, iva=16, stock=35, min_stock=15, category="Vinos", supplier=cetto),
-                    Product(name="Vino Santo Tomás Tinto", description="Vino tinto 750ml", 
-                           price=220.00, iva=16, stock=30, min_stock=10, category="Vinos", supplier=cetto),
-                    Product(name="Vino Casa Madero Rosado", description="Vino rosado 750ml", 
-                           price=200.00, iva=16, stock=25, min_stock=10, category="Vinos", supplier=cetto),
+                           price=180.00, iva_rate=16.0, stock=35, min_stock=15, category="Vinos", 
+                           supplier=cetto, include_iva=True),
                     
-                    # Licores y Destilados
+                    # Tequilas
                     Product(name="Tequila José Cuervo Especial", description="Tequila reposado 750ml", 
-                           price=280.00, iva=16, stock=50, min_stock=20, category="Tequilas", supplier=cuervo),
+                           price=280.00, iva_rate=16.0, stock=50, min_stock=20, category="Tequilas", 
+                           supplier=cuervo, include_iva=True),
                     Product(name="Tequila Jimador Reposado", description="Tequila 100% agave 750ml", 
-                           price=320.00, iva=16, stock=45, min_stock=20, category="Tequilas", supplier=cuervo),
-                    Product(name="Tequila Herradura Blanco", description="Tequila blanco 750ml", 
-                           price=450.00, iva=16, stock=30, min_stock=15, category="Tequilas", supplier=cuervo),
-                    Product(name="Mezcal 400 Conejos", description="Mezcal joven 750ml", 
-                           price=380.00, iva=16, stock=35, min_stock=15, category="Mezcales", supplier=distribuidor),
-                    Product(name="Ron Bacardi Blanco", description="Ron blanco 750ml", 
-                           price=250.00, iva=16, stock=40, min_stock=20, category="Rones", supplier=distribuidor),
-                    Product(name="Vodka Absolut", description="Vodka premium 750ml", 
-                           price=420.00, iva=16, stock=30, min_stock=15, category="Vodkas", supplier=distribuidor),
-                    Product(name="Whisky Johnnie Walker Red", description="Whisky escocés 750ml", 
-                           price=480.00, iva=16, stock=25, min_stock=10, category="Whiskys", supplier=distribuidor),
+                           price=320.00, iva_rate=16.0, stock=45, min_stock=20, category="Tequilas", 
+                           supplier=cuervo, include_iva=True),
                     
-                    # Aperitivos y Mezclas
-                    Product(name="Squirt 600ml", description="Refresco de toronja", 
-                           price=15.00, iva=16, stock=100, min_stock=30, category="Refrescos", supplier=distribuidor),
+                    # Destilados
+                    Product(name="Ron Bacardi Blanco", description="Ron blanco 750ml", 
+                           price=250.00, iva_rate=16.0, stock=40, min_stock=20, category="Rones", 
+                           supplier=distribuidor, include_iva=True),
+                    Product(name="Vodka Absolut", description="Vodka premium 750ml", 
+                           price=420.00, iva_rate=16.0, stock=30, min_stock=15, category="Vodkas", 
+                           supplier=distribuidor, include_iva=True),
+                    
+                    # Refrescos y Bebidas
                     Product(name="Coca Cola 600ml", description="Refresco de cola", 
-                           price=15.00, iva=16, stock=100, min_stock=30, category="Refrescos", supplier=distribuidor),
+                           price=15.00, iva_rate=16.0, stock=100, min_stock=30, category="Refrescos", 
+                           supplier=distribuidor, include_iva=True),
                     Product(name="Agua Mineral Topo Chico", description="Agua mineral 355ml", 
-                           price=18.00, iva=16, stock=80, min_stock=25, category="Refrescos", supplier=distribuidor),
-                    Product(name="Jugo Jumex Naranja 1L", description="Jugo de naranja", 
-                           price=25.00, iva=16, stock=60, min_stock=20, category="Jugos", supplier=distribuidor),
+                           price=18.00, iva_rate=16.0, stock=80, min_stock=25, category="Refrescos", 
+                           supplier=distribuidor, include_iva=True),
                     
                     # Botanas
-                    Product(name="Cacahuates Japoneses", description="Botana 150g", 
-                           price=30.00, iva=16, stock=70, min_stock=30, category="Botanas", supplier=distribuidor),
                     Product(name="Papas Sabritas Original", description="Papas fritas 170g", 
-                           price=35.00, iva=16, stock=60, min_stock=25, category="Botanas", supplier=distribuidor),
-                    Product(name="Chicharrón Preparado", description="Botana 100g", 
-                           price=25.00, iva=16, stock=50, min_stock=20, category="Botanas", supplier=distribuidor),
-                    Product(name="Mix de Nueces", description="Mezcla de nueces 200g", 
-                           price=55.00, iva=16, stock=40, min_stock=15, category="Botanas", supplier=distribuidor),
-                    
-                    # Cigarros
-                    Product(name="Marlboro Rojo", description="Cajetilla 20 cigarros", 
-                           price=75.00, iva=16, stock=100, min_stock=40, category="Cigarros", supplier=distribuidor),
-                    Product(name="Camel Blue", description="Cajetilla 20 cigarros", 
-                           price=70.00, iva=16, stock=80, min_stock=35, category="Cigarros", supplier=distribuidor),
+                           price=35.00, iva_rate=16.0, stock=60, min_stock=25, category="Botanas", 
+                           supplier=distribuidor, include_iva=True),
+                    Product(name="Cacahuates Japoneses", description="Botana 150g", 
+                           price=30.00, iva_rate=16.0, stock=70, min_stock=30, category="Botanas", 
+                           supplier=distribuidor, include_iva=True),
                 ]
                 for p in productos:
                     db.session.add(p)
@@ -249,11 +278,12 @@ def create_app():
             # Agregar clientes de ejemplo si no existen
             if Customer.query.count() == 0:
                 clientes = [
-                    Customer(name="Juan Pérez", email="juan@email.com", phone="5551234567", address="Calle Juárez #123, Centro"),
-                    Customer(name="María García", email="maria@email.com", phone="5557654321", address="Av. Hidalgo #456, Col. Norte"),
-                    Customer(name="Carlos López", email="carlos@email.com", phone="5559876543", address="Blvd. Morelos #789, Col. Sur"),
-                    Customer(name="Ana Martínez", email="ana@email.com", phone="5552468135", address="Calle Allende #321, Centro"),
-                    Customer(name="Roberto Sánchez", email="roberto@email.com", phone="5553691470", address="Av. Reforma #654, Col. Este")
+                    Customer(name="Juan Pérez", email="juan@email.com", phone="5551234567", 
+                            address="Calle Juárez #123, Centro"),
+                    Customer(name="María García", email="maria@email.com", phone="5557654321", 
+                            address="Av. Hidalgo #456, Col. Norte"),
+                    Customer(name="Carlos López", email="carlos@email.com", phone="5559876543", 
+                            address="Blvd. Morelos #789, Col. Sur"),
                 ]
                 for c in clientes:
                     db.session.add(c)
@@ -270,9 +300,53 @@ def create_app():
     from .routes import bp as routes_bp
     app.register_blueprint(routes_bp, url_prefix="/api")
     
+    # Manejador de errores para rutas API no encontradas
+    @app.errorhandler(404)
+    def not_found_error(error):
+        # Si es una petición API, devolver JSON
+        if '/api/' in str(error) or '/api/' in app.config.get('REQUEST_URI', ''):
+            return jsonify({"msg": "Endpoint not found", "error": str(error)}), 404
+        # Si no, servir el index.html para el frontend
+        return send_from_directory(app.template_folder, 'index.html')
+    
+    # Manejador de errores 500
+    @app.errorhandler(500)
+    def internal_error(error):
+        app.logger.error(f"Internal server error: {error}")
+        db.session.rollback()
+        return jsonify({"msg": "Internal server error", "error": str(error)}), 500
+    
+    # Manejador de errores 401
+    @app.errorhandler(401)
+    def unauthorized_error(error):
+        return jsonify({"msg": "Unauthorized", "error": str(error)}), 401
+    
+    # Manejador de errores 403
+    @app.errorhandler(403)
+    def forbidden_error(error):
+        return jsonify({"msg": "Forbidden", "error": str(error)}), 403
+    
     # Ruta principal - servir el frontend
     @app.route('/')
     def index():
         return send_from_directory(app.template_folder, 'index.html')
+    
+    # Ruta para servir archivos estáticos explícitamente
+    @app.route('/static/<path:filename>')
+    def serve_static(filename):
+        return send_from_directory(app.static_folder, filename)
+    
+    # Endpoint de health check
+    @app.route('/health')
+    def health_check():
+        return jsonify({"status": "ok", "message": "Server is running"}), 200
+    
+    # Log de rutas registradas al inicio (útil para debugging)
+    @app.before_first_request
+    def log_routes():
+        print("\n📍 Rutas registradas:")
+        for rule in app.url_map.iter_rules():
+            print(f"  {rule.endpoint:30s} {rule.methods:30s} {rule.rule}")
+        print()
     
     return app
