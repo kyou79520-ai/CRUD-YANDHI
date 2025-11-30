@@ -73,9 +73,19 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     }
     
     try {
+        console.log(`🌐 API Request: ${method} ${API_URL}${endpoint}`);
         const response = await fetch(API_URL + endpoint, options);
         
+        // Verificar si la respuesta es JSON
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+            const text = await response.text();
+            console.error('❌ Respuesta no es JSON:', text.substring(0, 200));
+            throw new Error('El servidor no devolvió JSON. Verifica que el backend esté funcionando correctamente.');
+        }
+        
         if (response.status === 401) {
+            console.warn('⚠️ Sesión expirada');
             localStorage.clear();
             TOKEN = null;
             CURRENT_USER = {};
@@ -86,12 +96,14 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
         const data = await response.json();
         
         if (!response.ok) {
+            console.error('❌ Error en respuesta:', data);
             throw new Error(data.msg || 'Error en la petición');
         }
         
+        console.log('✅ API Response OK:', endpoint);
         return data;
     } catch (error) {
-        console.error('API Error:', error);
+        console.error('❌ API Error:', error);
         if (error.message !== 'Sesión expirada. Por favor inicia sesión nuevamente.') {
             alert('Error: ' + error.message);
         }
@@ -106,6 +118,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     const password = document.getElementById('password').value;
     
     try {
+        console.log('🔐 Intentando login...');
         const data = await apiRequest('/auth/login', 'POST', { username, password });
         
         if (!data.access_token || !data.user) {
@@ -118,13 +131,15 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         localStorage.setItem('token', TOKEN);
         localStorage.setItem('user', JSON.stringify(CURRENT_USER));
         
+        console.log('✅ Login exitoso:', CURRENT_USER);
+        
         document.getElementById('user-info').textContent = `👤 ${CURRENT_USER.username} (${CURRENT_USER.role})`;
         document.body.className = `role-${CURRENT_USER.role}`;
         
         showScreen('main-screen');
         loadDashboard();
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('❌ Login error:', error);
         showError('login-error', error.message || 'Usuario o contraseña incorrectos');
     }
 });
@@ -177,6 +192,7 @@ document.querySelectorAll('.menu-item').forEach(item => {
 // ========== DASHBOARD ==========
 async function loadDashboard() {
     try {
+        console.log('📊 Cargando dashboard...');
         const data = await apiRequest('/dashboard');
         const products = await apiRequest('/products');
         
@@ -194,8 +210,8 @@ async function loadDashboard() {
             lowStockAlert.style.display = 'block';
             lowStockList.innerHTML = lowStockProducts.map(p => `
                 <div style="padding: 8px; border-bottom: 1px solid #ffc107;">
-                    <strong>${p.name}</strong> - Stock actual: <span style="color: #dc3545; font-weight: bold;">${p.stock}</span> 
-                    (Mínimo: ${p.min_stock}) - Proveedor: ${p.supplier_name || 'Sin proveedor'}
+                    <strong>${p.name}</strong> - Stock: <span style="color: #dc3545; font-weight: bold;">${p.stock}</span> 
+                    (Mínimo: ${p.min_stock})
                 </div>
             `).join('');
         } else {
@@ -209,8 +225,11 @@ async function loadDashboard() {
                 <small>(${new Date(sale.created_at).toLocaleString()})</small>
             </div>
         `).join('');
+        
+        console.log('✅ Dashboard cargado exitosamente');
     } catch (error) {
-        console.error('Error loading dashboard:', error);
+        console.error('❌ Error loading dashboard:', error);
+        alert('Error al cargar el dashboard. Revisa la consola para más detalles.');
     }
 }
 
@@ -1082,9 +1101,16 @@ window.addEventListener('click', (e) => {
 });
 
 // ========== INICIALIZACIÓN ==========
+console.log('🚀 Inicializando aplicación...');
+console.log('Token guardado:', TOKEN ? 'Sí' : 'No');
+console.log('Usuario guardado:', CURRENT_USER.username || 'No');
+
 if (TOKEN && CURRENT_USER.username) {
     document.getElementById('user-info').textContent = `👤 ${CURRENT_USER.username} (${CURRENT_USER.role})`;
     document.body.className = `role-${CURRENT_USER.role}`;
     showScreen('main-screen');
     loadDashboard();
+} else {
+    console.log('📝 Mostrando pantalla de login');
+    showScreen('login-screen');
 }
