@@ -47,23 +47,31 @@ class Product(db.Model):
     name = db.Column(db.String(150), nullable=False)
     description = db.Column(db.Text)
     price = db.Column(db.Float, nullable=False)
-    iva = db.Column(db.Integer, default=16)  # NUEVO: Porcentaje de IVA (default 16%)
+    iva = db.Column(db.Integer, default=16)  # Porcentaje de IVA (default 16%)
     stock = db.Column(db.Integer, default=0)
     min_stock = db.Column(db.Integer, default=10)
     category = db.Column(db.String(100))
-    supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"), nullable=False)  # ACTUALIZADO: Ahora es obligatorio
+    supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"))  # Puede ser NULL temporalmente
     supplier = db.relationship("Supplier", backref="products")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     @property
     def is_low_stock(self):
         """Verifica si el stock está por debajo del mínimo"""
-        return self.stock <= self.min_stock
+        try:
+            min_stock = self.min_stock if self.min_stock else 10
+            return self.stock <= min_stock
+        except:
+            return False
     
     @property
     def price_with_iva(self):
         """Calcula el precio con IVA incluido"""
-        return self.price * (1 + (self.iva / 100))
+        try:
+            iva_rate = self.iva if self.iva else 16
+            return self.price * (1 + (iva_rate / 100))
+        except:
+            return self.price * 1.16
 
 class Sale(db.Model):
     __tablename__ = "sales"

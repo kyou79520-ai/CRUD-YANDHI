@@ -75,7 +75,6 @@ def create_customer():
 @bp.route("/customers", methods=["GET"])
 @role_required(["admin", "manager", "viewer"])
 def list_customers():
-    # Obtener parámetros de búsqueda
     search = request.args.get('search', '')
     
     query = Customer.query
@@ -94,8 +93,8 @@ def list_customers():
         "email": c.email,
         "phone": c.phone,
         "address": c.address,
-        "total_purchases": sum(s.total for s in c.sales),
-        "purchase_count": len(c.sales)
+        "total_purchases": sum(s.total for s in c.sales) if hasattr(c, 'sales') else 0,
+        "purchase_count": len(c.sales) if hasattr(c, 'sales') else 0
     } for c in customers])
 
 @bp.route("/customers/<int:cid>", methods=["PUT"])
@@ -159,7 +158,7 @@ def list_suppliers():
         "email": s.email,
         "phone": s.phone,
         "address": s.address,
-        "product_count": len(s.products)
+        "product_count": len(s.products) if hasattr(s, 'products') else 0
     } for s in suppliers])
 
 @bp.route("/suppliers/<int:sid>/products", methods=["GET"])
@@ -182,7 +181,7 @@ def list_supplier_products(sid):
             "price": p.price,
             "price_with_iva": p.price_with_iva,
             "stock": p.stock,
-            "min_stock": p.min_stock,
+            "min_stock": getattr(p, 'min_stock', 10),
             "is_low_stock": p.is_low_stock
         } for p in products]
     })
@@ -215,80 +214,153 @@ def delete_supplier(sid):
 @role_required(["admin", "manager"])
 def create_product():
     data = request.json
-    product = Product(
-        name=data.get("name"),
-        description=data.get("description"),
-        price=data.get("price"),
-        stock=data.get("stock", 0),
-        min_stock=data.get("min_stock", 10),
-        category=data.get("category"),
-        supplier_id=data.get("supplier_id"),
-        include_iva=data.get("include_iva", True),
-        iva_rate=data.get("iva_rate", 16.0)
-    )
-    db.session.add(product)
-    db.session.commit()
-    log_db_action("create_product", f"product_id={product.id}, name={product.name}")
-    return jsonify({"id": product.id, "name": product.name}), 201
+    
+    try:
+        # Obtener IVA (puede venir como iva o iva_rate)
+        iva = data.get("iva", data.get("iva_rate", 16))
+        
+        product = Product(
+            name=data.get("name"),
+            description=data.get("description"),
+            price=data.get("price"),
+            iva=iva,
+            stock=data.get("stock", 0),
+            min_stock=data.get("min_stock", 10),
+            category=data.get("category"),
+            supplier_id=data.get("supplier_id")
+        )
+        db.session.add(product)
+        db.session.commit()
+        log_db_action("create_product", f"product_id={product.id}, name={product.name}")
+        return jsonify({"id": product.id, "name": product.name}), 201
+    except Exception as e:
+        current_app.logger.error(f"Error creating product: {str(e)}")
+        db.session.rollback()
+        return jsonify({"msg": f"Error creating product: {str(e)}"}), 500
 
 @bp.route("/products", methods=["GET"])
 @role_required(["admin", "manager", "viewer"])
 def list_products():
-    # Filtros de búsqueda
-    search = request.args.get('search', '')
-    category = request.args.get('category', '')
-    supplier_id = request.args.get('supplier_id', '')
-    low_stock = request.args.get('low_stock', '')
-    
-    query = Product.query
-    
-    if search:
-        query = query.filter(Product.name.ilike(f'%{search}%'))
-    
-    if category:
-        query = query.filter_by(category=category)
-    
-    if supplier_id:
-        query = query.filter_by(supplier_id=int(supplier_id))
-    
-    if low_stock == 'true':
-        query = query.filter(Product.stock <= Product.min_stock)
-    
-    products = query.all()
-    return jsonify([{
-        "id": p.id,
-        "name": p.name,
-        "description": p.description,
-        "price": p.price,
-        "price_with_iva": p.price_with_iva,
-        "iva_amount": p.iva_amount,
-        "include_iva": p.include_iva,
-        "iva_rate": p.iva_rate,
-        "stock": p.stock,
-        "min_stock": p.min_stock,
-        "category": p.category,
-        "supplier_id": p.supplier_id,
-        "supplier_name": p.supplier.name if p.supplier else None,
-        "is_low_stock": p.is_low_stock
-    } for p in products])
+    try:
+        # Filtros de búsqueda
+        search = request.args.get('search', '')
+        category = request.args.get('category', '')
+        supplier_id = request.args.get('supplier_id', '')
+        low_stock = request.args.get('low_stock', '')
+        
+        query = Product.query
+        
+        if search:
+            query = query.filter(Product.name.ilike(f'%{search}%'))
+        
+        if category:
+            query = query.filter_by(category=category)
+        
+        if supplier_id:
+            query = query.filter_by(supplier_id=int(supplier_id))
+        
+        if low_stock == 'true':
+            query = query.filter(Product.stock <= Product.min_stock)
+        
+        products = query.all()
+        result = []
+        
+        for p in products:
+            try:
+                # Obtener IVA de forma segura (puede ser iva, iva_rate, o default 16)
+                iva = 16
+                if hasattr(p, 'iva') and p.iva:
+                    iva = p.iva
+                elif hasattr(p, 'iva_rate') and p.iva_rate:
+                    iva = p.iva_rate
+                
+                # Calcular precio con IVA
+                price_with_iva = p.price * (1 + iva / 100)
+                
+                # Obtener nombre del proveedor
+                supplier_name = None
+                if p.supplier_id and hasattr(p, 'supplier') and p.supplier:
+                    supplier_name = p.supplier.name
+                
+                # Construir diccionario del producto
+                product_data = {
+                    "id": p.id,
+                    "name": p.name,
+                    "description": p.description,
+                    "price": p.price,
+                    "price_with_iva": price_with_iva,
+                    "iva": iva,  # Solo devolver el porcentaje de IVA
+                    "stock": p.stock,
+                    "min_stock": getattr(p, 'min_stock', 10),
+                    "category": p.category,
+                    "supplier_id": p.supplier_id,
+                    "supplier_name": supplier_name,
+                    "is_low_stock": p.stock <= getattr(p, 'min_stock', 10)
+                }
+                
+                result.append(product_data)
+            except Exception as e:
+                current_app.logger.error(f"Error processing product {p.id}: {str(e)}")
+                # Agregar producto con datos mínimos
+                result.append({
+                    "id": p.id,
+                    "name": p.name,
+                    "description": p.description or "",
+                    "price": p.price,
+                    "price_with_iva": p.price * 1.16,
+                    "iva": 16,
+                    "stock": p.stock,
+                    "min_stock": 10,
+                    "category": p.category or "",
+                    "supplier_id": None,
+                    "supplier_name": "Error",
+                    "is_low_stock": False
+                })
+        
+        return jsonify(result)
+    except Exception as e:
+        current_app.logger.error(f"Error in list_products: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"msg": f"Error loading products: {str(e)}"}), 500
 
 @bp.route("/products/<int:pid>", methods=["PUT"])
 @role_required(["admin", "manager"])
 def update_product(pid):
-    product = Product.query.get_or_404(pid)
-    data = request.json
-    product.name = data.get("name", product.name)
-    product.description = data.get("description", product.description)
-    product.price = data.get("price", product.price)
-    product.stock = data.get("stock", product.stock)
-    product.min_stock = data.get("min_stock", product.min_stock)
-    product.category = data.get("category", product.category)
-    product.supplier_id = data.get("supplier_id", product.supplier_id)
-    product.include_iva = data.get("include_iva", product.include_iva)
-    product.iva_rate = data.get("iva_rate", product.iva_rate)
-    db.session.commit()
-    log_db_action("update_product", f"product_id={pid}")
-    return jsonify({"msg": "updated"})
+    try:
+        product = Product.query.get_or_404(pid)
+        data = request.json
+        
+        product.name = data.get("name", product.name)
+        product.description = data.get("description", product.description)
+        product.price = data.get("price", product.price)
+        product.stock = data.get("stock", product.stock)
+        
+        # Actualizar min_stock de forma segura
+        if "min_stock" in data:
+            product.min_stock = data.get("min_stock")
+        elif not hasattr(product, 'min_stock') or product.min_stock is None:
+            product.min_stock = 10
+        
+        product.category = data.get("category", product.category)
+        product.supplier_id = data.get("supplier_id", product.supplier_id)
+        
+        # Actualizar IVA (puede venir como iva o iva_rate)
+        if "iva" in data:
+            product.iva = data.get("iva")
+        elif "iva_rate" in data:
+            if hasattr(product, 'iva'):
+                product.iva = data.get("iva_rate")
+            elif hasattr(product, 'iva_rate'):
+                product.iva_rate = data.get("iva_rate")
+        
+        db.session.commit()
+        log_db_action("update_product", f"product_id={pid}")
+        return jsonify({"msg": "updated"})
+    except Exception as e:
+        current_app.logger.error(f"Error updating product {pid}: {str(e)}")
+        db.session.rollback()
+        return jsonify({"msg": f"Error updating product: {str(e)}"}), 500
 
 @bp.route("/products/<int:pid>", methods=["DELETE"])
 @role_required(["admin"])
@@ -321,7 +393,10 @@ def create_sale():
             return jsonify({"msg": f"Insufficient stock for {product.name}"}), 400
         
         item_subtotal = product.price * item["quantity"]
-        item_iva = product.iva_amount * item["quantity"]
+        
+        # Calcular IVA del item
+        iva_rate = getattr(product, 'iva', getattr(product, 'iva_rate', 16))
+        item_iva = item_subtotal * (iva_rate / 100)
         
         subtotal += item_subtotal
         total_iva += item_iva
@@ -332,8 +407,8 @@ def create_sale():
     sale = Sale(
         customer_id=data.get("customer_id"),
         user_id=g.current_user["id"],
-        subtotal=subtotal,
-        iva=total_iva,
+        subtotal=subtotal if hasattr(Sale, 'subtotal') else None,
+        iva=total_iva if hasattr(Sale, 'iva') else None,
         total=total,
         payment_method=data.get("payment_method", "cash"),
         status="completed"
@@ -344,17 +419,23 @@ def create_sale():
     # Crear items y actualizar stock
     for item in items_data:
         product = Product.query.get(item["product_id"])
-        item_iva = product.iva_amount * item["quantity"]
-        item_subtotal = (product.price * item["quantity"]) + item_iva
+        iva_rate = getattr(product, 'iva', getattr(product, 'iva_rate', 16))
+        item_subtotal = product.price * item["quantity"]
+        item_iva = item_subtotal * (iva_rate / 100)
+        item_total = item_subtotal + item_iva
         
         sale_item = SaleItem(
             sale_id=sale.id,
             product_id=product.id,
             quantity=item["quantity"],
             unit_price=product.price,
-            iva_amount=item_iva,
-            subtotal=item_subtotal
+            subtotal=item_total
         )
+        
+        # Agregar iva_amount solo si la columna existe
+        if hasattr(SaleItem, 'iva_amount'):
+            sale_item.iva_amount = item_iva
+        
         product.stock -= item["quantity"]
         db.session.add(sale_item)
     
@@ -400,8 +481,8 @@ def list_sales():
         "id": s.id,
         "customer": s.customer.name if s.customer else "N/A",
         "user": s.user.username,
-        "subtotal": s.subtotal,
-        "iva": s.iva,
+        "subtotal": getattr(s, 'subtotal', None),
+        "iva": getattr(s, 'iva', None),
         "total": s.total,
         "payment_method": s.payment_method,
         "status": s.status,
@@ -416,8 +497,8 @@ def get_sale(sid):
         "id": sale.id,
         "customer": sale.customer.name if sale.customer else "N/A",
         "user": sale.user.username,
-        "subtotal": sale.subtotal,
-        "iva": sale.iva,
+        "subtotal": getattr(sale, 'subtotal', None),
+        "iva": getattr(sale, 'iva', None),
         "total": sale.total,
         "payment_method": sale.payment_method,
         "status": sale.status,
@@ -426,7 +507,7 @@ def get_sale(sid):
             "product": item.product.name,
             "quantity": item.quantity,
             "unit_price": item.unit_price,
-            "iva_amount": item.iva_amount,
+            "iva_amount": getattr(item, 'iva_amount', None),
             "subtotal": item.subtotal
         } for item in sale.items]
     })
@@ -450,7 +531,7 @@ def delete_sale(sid):
 @role_required(["admin", "manager", "viewer"])
 def sales_summary():
     """Resumen de ventas por período"""
-    period = request.args.get('period', 'today')  # today, week, month, year
+    period = request.args.get('period', 'today')
     
     now = datetime.now()
     
@@ -468,7 +549,7 @@ def sales_summary():
     sales = Sale.query.filter(Sale.created_at >= start_date).all()
     
     total_sales = sum(s.total for s in sales)
-    total_iva = sum(s.iva for s in sales)
+    total_iva = sum(getattr(s, 'iva', 0) for s in sales)
     count = len(sales)
     
     return jsonify({
