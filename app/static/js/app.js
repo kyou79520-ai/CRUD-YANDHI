@@ -1,4 +1,4 @@
-// ========== CONFIGURACIÓN ==========
+// ========== CONFIGURACION ==========
 const API_URL = '/api';
 let TOKEN = localStorage.getItem('token');
 let CURRENT_USER = (() => {
@@ -15,15 +15,23 @@ let SUPPLIERS = [];
 
 // ========== UTILIDADES ==========
 function showScreen(screenId) {
+    console.log('Cambiando a pantalla:', screenId);
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    document.getElementById(screenId).classList.add('active');
+    const screen = document.getElementById(screenId);
+    if (screen) {
+        screen.classList.add('active');
+        console.log('Pantalla activada:', screenId);
+    } else {
+        console.error('No se encontro la pantalla:', screenId);
+    }
 }
 
 function showSection(sectionId) {
     document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
     document.getElementById(sectionId + '-section').classList.add('active');
     document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
-    document.querySelector(`[data-section="${sectionId}"]`).classList.add('active');
+    const menuItem = document.querySelector(`[data-section="${sectionId}"]`);
+    if (menuItem) menuItem.classList.add('active');
 }
 
 function showError(elementId, message) {
@@ -73,38 +81,37 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     }
     
     try {
-        console.log(`🌐 API Request: ${method} ${API_URL}${endpoint}`);
+        console.log(`API Request: ${method} ${API_URL}${endpoint}`);
         const response = await fetch(API_URL + endpoint, options);
         
-        // Verificar si la respuesta es JSON
         const contentType = response.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
             const text = await response.text();
-            console.error('❌ Respuesta no es JSON:', text.substring(0, 200));
-            throw new Error('El servidor no devolvió JSON. Verifica que el backend esté funcionando correctamente.');
+            console.error('Respuesta no es JSON:', text.substring(0, 200));
+            throw new Error('El servidor no devolvio JSON.');
         }
         
         if (response.status === 401) {
-            console.warn('⚠️ Sesión expirada');
+            console.warn('Sesion expirada');
             localStorage.clear();
             TOKEN = null;
             CURRENT_USER = {};
             showScreen('login-screen');
-            throw new Error('Sesión expirada. Por favor inicia sesión nuevamente.');
+            throw new Error('Sesion expirada. Por favor inicia sesion nuevamente.');
         }
         
         const data = await response.json();
         
         if (!response.ok) {
-            console.error('❌ Error en respuesta:', data);
-            throw new Error(data.msg || 'Error en la petición');
+            console.error('Error en respuesta:', data);
+            throw new Error(data.msg || 'Error en la peticion');
         }
         
-        console.log('✅ API Response OK:', endpoint);
+        console.log('API Response OK:', endpoint);
         return data;
     } catch (error) {
-        console.error('❌ API Error:', error);
-        if (error.message !== 'Sesión expirada. Por favor inicia sesión nuevamente.') {
+        console.error('API Error:', error);
+        if (error.message !== 'Sesion expirada. Por favor inicia sesion nuevamente.') {
             alert('Error: ' + error.message);
         }
         throw error;
@@ -118,11 +125,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     const password = document.getElementById('password').value;
     
     try {
-        console.log('🔐 Intentando login...');
+        console.log('Intentando login...');
         const data = await apiRequest('/auth/login', 'POST', { username, password });
         
         if (!data.access_token || !data.user) {
-            throw new Error('Respuesta inválida del servidor');
+            throw new Error('Respuesta invalida del servidor');
         }
         
         TOKEN = data.access_token;
@@ -131,16 +138,20 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         localStorage.setItem('token', TOKEN);
         localStorage.setItem('user', JSON.stringify(CURRENT_USER));
         
-        console.log('✅ Login exitoso:', CURRENT_USER);
+        console.log('Login exitoso:', CURRENT_USER);
         
-        document.getElementById('user-info').textContent = `👤 ${CURRENT_USER.username} (${CURRENT_USER.role})`;
+        document.getElementById('user-info').textContent = `${CURRENT_USER.username} (${CURRENT_USER.role})`;
         document.body.className = `role-${CURRENT_USER.role}`;
         
+        console.log('Cambiando a pantalla principal...');
         showScreen('main-screen');
-        loadDashboard();
+        
+        console.log('Cargando dashboard...');
+        await loadDashboard();
+        
     } catch (error) {
-        console.error('❌ Login error:', error);
-        showError('login-error', error.message || 'Usuario o contraseña incorrectos');
+        console.error('Login error:', error);
+        showError('login-error', error.message || 'Usuario o contrasena incorrectos');
     }
 });
 
@@ -192,7 +203,7 @@ document.querySelectorAll('.menu-item').forEach(item => {
 // ========== DASHBOARD ==========
 async function loadDashboard() {
     try {
-        console.log('📊 Cargando dashboard...');
+        console.log('Cargando dashboard...');
         const data = await apiRequest('/dashboard');
         const products = await apiRequest('/products');
         
@@ -201,7 +212,6 @@ async function loadDashboard() {
         document.getElementById('total-customers').textContent = data.total_customers;
         document.getElementById('total-suppliers').textContent = data.total_suppliers || 0;
         
-        // Mostrar alerta de productos con stock bajo
         const lowStockProducts = products.filter(p => p.is_low_stock);
         const lowStockAlert = document.getElementById('low-stock-alert');
         const lowStockList = document.getElementById('low-stock-list');
@@ -211,7 +221,7 @@ async function loadDashboard() {
             lowStockList.innerHTML = lowStockProducts.map(p => `
                 <div style="padding: 8px; border-bottom: 1px solid #ffc107;">
                     <strong>${p.name}</strong> - Stock: <span style="color: #dc3545; font-weight: bold;">${p.stock}</span> 
-                    (Mínimo: ${p.min_stock})
+                    (Minimo: ${p.min_stock})
                 </div>
             `).join('');
         } else {
@@ -226,10 +236,10 @@ async function loadDashboard() {
             </div>
         `).join('');
         
-        console.log('✅ Dashboard cargado exitosamente');
+        console.log('Dashboard cargado exitosamente');
     } catch (error) {
-        console.error('❌ Error loading dashboard:', error);
-        alert('Error al cargar el dashboard. Revisa la consola para más detalles.');
+        console.error('Error loading dashboard:', error);
+        alert('Error al cargar el dashboard.');
     }
 }
 
@@ -240,8 +250,8 @@ async function loadSalesPage() {
         const productsGrid = document.getElementById('products-grid');
         productsGrid.innerHTML = products.map(p => {
             const lowStockClass = p.is_low_stock ? 'style="border-color: #dc3545;"' : '';
-            const lowStockBadge = p.is_low_stock ? '<span style="color: #dc3545; font-size: 11px;">⚠️ Stock Bajo</span>' : '';
-            const iva = p.iva || 16;
+            const lowStockBadge = p.is_low_stock ? '<span style="color: #dc3545; font-size: 11px;">Stock Bajo</span>' : '';
+            const iva = p.iva_rate || 16;
             const priceWithIVA = p.price * (1 + iva / 100);
             return `
                 <div class="product-card" ${lowStockClass} onclick="addToCart(${p.id}, '${p.name.replace(/'/g, "\\'")}', ${p.price}, ${p.stock}, ${iva})">
@@ -297,7 +307,7 @@ function updateCartDisplay() {
     const cartIVA = document.getElementById('cart-iva');
     
     if (CART.length === 0) {
-        cartItems.innerHTML = '<p style="text-align: center; color: #999;">Carrito vacío</p>';
+        cartItems.innerHTML = '<p style="text-align: center; color: #999;">Carrito vacio</p>';
         cartTotal.textContent = '0.00';
         if (cartSubtotal) cartSubtotal.textContent = '0.00';
         if (cartIVA) cartIVA.textContent = '0.00';
@@ -307,7 +317,6 @@ function updateCartDisplay() {
     cartItems.innerHTML = CART.map((item, index) => {
         const subtotal = item.price * item.quantity;
         const ivaAmount = subtotal * (item.iva / 100);
-        const totalWithIVA = subtotal + ivaAmount;
         
         return `
         <div class="cart-item">
@@ -320,7 +329,7 @@ function updateCartDisplay() {
                 <button onclick="updateCartQty(${index}, -1)">-</button>
                 <span>${item.quantity}</span>
                 <button onclick="updateCartQty(${index}, 1)">+</button>
-                <button class="cart-item-remove" onclick="removeFromCart(${index})">🗑️</button>
+                <button class="cart-item-remove" onclick="removeFromCart(${index})">X</button>
             </div>
         </div>
     `;
@@ -364,7 +373,7 @@ document.getElementById('clear-cart-btn').addEventListener('click', () => {
 
 document.getElementById('complete-sale-btn').addEventListener('click', async () => {
     if (CART.length === 0) {
-        alert('El carrito está vacío');
+        alert('El carrito esta vacio');
         return;
     }
     
@@ -382,7 +391,7 @@ document.getElementById('complete-sale-btn').addEventListener('click', async () 
     
     try {
         const result = await apiRequest('/sales', 'POST', saleData);
-        alert(`✅ Venta completada! Total: $${result.total.toFixed(2)}`);
+        alert(`Venta completada! Total: $${result.total.toFixed(2)}`);
         CART = [];
         updateCartDisplay();
         loadSalesPage();
@@ -440,26 +449,14 @@ async function loadSalesHistory() {
 async function viewSale(id) {
     try {
         const sale = await apiRequest(`/sales/${id}`);
-        
-        alert(`
-Venta #${sale.id}
-Cliente: ${sale.customer}
-Vendedor: ${sale.user}
-Método de pago: ${sale.payment_method}
-Fecha: ${new Date(sale.created_at).toLocaleString()}
-
-Productos:
-${sale.items.map(i => `${i.product} - ${i.quantity} x $${i.unit_price.toFixed(2)}`).join('\n')}
-
-Total: $${sale.total.toFixed(2)}
-        `);
+        alert(`Venta #${sale.id}\nCliente: ${sale.customer}\nVendedor: ${sale.user}\nMetodo de pago: ${sale.payment_method}\nFecha: ${new Date(sale.created_at).toLocaleString()}\n\nProductos:\n${sale.items.map(i => `${i.product} - ${i.quantity} x $${i.unit_price.toFixed(2)}`).join('\n')}\n\nTotal: $${sale.total.toFixed(2)}`);
     } catch (error) {
         alert('Error al cargar la venta');
     }
 }
 
 async function deleteSale(id) {
-    if (!confirm('¿Eliminar esta venta?')) return;
+    if (!confirm('Eliminar esta venta?')) return;
     
     try {
         await apiRequest(`/sales/${id}`, 'DELETE');
@@ -476,10 +473,9 @@ async function loadProducts() {
         const products = await apiRequest('/products');
         const productsTable = document.getElementById('products-table');
         
-        // Agregar buscador
         const searchHTML = `
             <div style="margin-bottom: 20px;">
-                <input type="text" id="product-search" placeholder="🔍 Buscar producto por nombre, categoría o proveedor..." 
+                <input type="text" id="product-search" placeholder="Buscar producto..." 
                        style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
             </div>
         `;
@@ -491,13 +487,13 @@ async function loadProducts() {
                         <tr>
                             <th>ID</th>
                             <th>Nombre</th>
-                            <th>Categoría</th>
+                            <th>Categoria</th>
                             <th>Proveedor</th>
                             <th>Precio</th>
                             <th>IVA (%)</th>
                             <th>Precio + IVA</th>
                             <th>Stock</th>
-                            <th>Stock Mín</th>
+                            <th>Stock Min</th>
                             <th>Estado</th>
                             <th>Acciones</th>
                         </tr>
@@ -505,9 +501,9 @@ async function loadProducts() {
                     <tbody id="products-tbody">
                         ${products.map(p => {
                             const stockStatus = p.is_low_stock ? 
-                                '<span style="color: #dc3545; font-weight: bold;">⚠️ Bajo</span>' : 
-                                '<span style="color: #28a745;">✓ OK</span>';
-                            const iva = p.iva || 16;
+                                '<span style="color: #dc3545; font-weight: bold;">Bajo</span>' : 
+                                '<span style="color: #28a745;">OK</span>';
+                            const iva = p.iva_rate || 16;
                             const priceWithIVA = p.price * (1 + iva / 100);
                             return `
                                 <tr ${p.is_low_stock ? 'style="background-color: #fff3cd;"' : ''} 
@@ -538,7 +534,6 @@ async function loadProducts() {
             </div>
         `;
         
-        // Agregar evento de búsqueda
         document.getElementById('product-search').addEventListener('input', (e) => {
             const searchTerm = e.target.value.toLowerCase();
             const rows = document.querySelectorAll('#products-tbody tr');
@@ -563,7 +558,7 @@ document.getElementById('add-product-btn').addEventListener('click', async () =>
                 <input type="text" name="name" required>
             </div>
             <div class="form-group">
-                <label>Descripción:</label>
+                <label>Descripcion:</label>
                 <textarea name="description" rows="3"></textarea>
             </div>
             <div class="form-group">
@@ -572,18 +567,18 @@ document.getElementById('add-product-btn').addEventListener('click', async () =>
             </div>
             <div class="form-group">
                 <label>IVA (%):</label>
-                <input type="number" name="iva" value="16" min="0" max="100" required>
+                <input type="number" name="iva_rate" value="16" min="0" max="100" required>
             </div>
             <div class="form-group">
                 <label>Stock Actual:</label>
                 <input type="number" name="stock" required>
             </div>
             <div class="form-group">
-                <label>Stock Mínimo:</label>
+                <label>Stock Minimo:</label>
                 <input type="number" name="min_stock" value="10" required>
             </div>
             <div class="form-group">
-                <label>Categoría:</label>
+                <label>Categoria:</label>
                 <input type="text" name="category">
             </div>
             <div class="form-group">
@@ -596,10 +591,11 @@ document.getElementById('add-product-btn').addEventListener('click', async () =>
         `, async (formData) => {
             const data = Object.fromEntries(formData);
             data.price = parseFloat(data.price);
-            data.iva = parseInt(data.iva);
+            data.iva_rate = parseFloat(data.iva_rate);
             data.stock = parseInt(data.stock);
             data.min_stock = parseInt(data.min_stock);
             data.supplier_id = data.supplier_id ? parseInt(data.supplier_id) : null;
+            data.include_iva = true;
             
             if (!data.supplier_id) {
                 alert('Debe seleccionar un proveedor');
@@ -630,7 +626,7 @@ async function editProduct(id) {
                 <input type="text" name="name" value="${product.name}" required>
             </div>
             <div class="form-group">
-                <label>Descripción:</label>
+                <label>Descripcion:</label>
                 <textarea name="description" rows="3">${product.description || ''}</textarea>
             </div>
             <div class="form-group">
@@ -639,18 +635,18 @@ async function editProduct(id) {
             </div>
             <div class="form-group">
                 <label>IVA (%):</label>
-                <input type="number" name="iva" value="${product.iva || 16}" min="0" max="100" required>
+                <input type="number" name="iva_rate" value="${product.iva_rate || 16}" min="0" max="100" required>
             </div>
             <div class="form-group">
                 <label>Stock Actual:</label>
                 <input type="number" name="stock" value="${product.stock}" required>
             </div>
             <div class="form-group">
-                <label>Stock Mínimo:</label>
+                <label>Stock Minimo:</label>
                 <input type="number" name="min_stock" value="${product.min_stock}" required>
             </div>
             <div class="form-group">
-                <label>Categoría:</label>
+                <label>Categoria:</label>
                 <input type="text" name="category" value="${product.category || ''}">
             </div>
             <div class="form-group">
@@ -663,10 +659,11 @@ async function editProduct(id) {
         `, async (formData) => {
             const data = Object.fromEntries(formData);
             data.price = parseFloat(data.price);
-            data.iva = parseInt(data.iva);
+            data.iva_rate = parseFloat(data.iva_rate);
             data.stock = parseInt(data.stock);
             data.min_stock = parseInt(data.min_stock);
             data.supplier_id = data.supplier_id ? parseInt(data.supplier_id) : null;
+            data.include_iva = true;
             
             if (!data.supplier_id) {
                 alert('Debe seleccionar un proveedor');
@@ -683,7 +680,7 @@ async function editProduct(id) {
 }
 
 async function deleteProduct(id) {
-    if (!confirm('¿Eliminar este producto?')) return;
+    if (!confirm('Eliminar este producto?')) return;
     
     try {
         await apiRequest(`/products/${id}`, 'DELETE');
@@ -700,10 +697,9 @@ async function loadSuppliers() {
         const suppliers = await apiRequest('/suppliers');
         const suppliersTable = document.getElementById('suppliers-table');
         
-        // Agregar buscador
         const searchHTML = `
             <div style="margin-bottom: 20px;">
-                <input type="text" id="supplier-search" placeholder="🔍 Buscar proveedor por nombre, contacto o email..." 
+                <input type="text" id="supplier-search" placeholder="Buscar proveedor..." 
                        style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
             </div>
         `;
@@ -717,8 +713,8 @@ async function loadSuppliers() {
                             <th>Nombre</th>
                             <th>Contacto</th>
                             <th>Email</th>
-                            <th>Teléfono</th>
-                            <th>Dirección</th>
+                            <th>Telefono</th>
+                            <th>Direccion</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -746,7 +742,6 @@ async function loadSuppliers() {
             </div>
         `;
         
-        // Agregar evento de búsqueda
         document.getElementById('supplier-search').addEventListener('input', (e) => {
             const searchTerm = e.target.value.toLowerCase();
             const rows = document.querySelectorAll('#suppliers-tbody tr');
@@ -775,11 +770,11 @@ document.getElementById('add-supplier-btn').addEventListener('click', () => {
             <input type="email" name="email">
         </div>
         <div class="form-group">
-            <label>Teléfono:</label>
+            <label>Telefono:</label>
             <input type="tel" name="phone">
         </div>
         <div class="form-group">
-            <label>Dirección:</label>
+            <label>Direccion:</label>
             <textarea name="address" rows="2"></textarea>
         </div>
     `, async (formData) => {
@@ -809,11 +804,11 @@ async function editSupplier(id) {
                 <input type="email" name="email" value="${supplier.email || ''}">
             </div>
             <div class="form-group">
-                <label>Teléfono:</label>
+                <label>Telefono:</label>
                 <input type="tel" name="phone" value="${supplier.phone || ''}">
             </div>
             <div class="form-group">
-                <label>Dirección:</label>
+                <label>Direccion:</label>
                 <textarea name="address" rows="2">${supplier.address || ''}</textarea>
             </div>
         `, async (formData) => {
@@ -828,7 +823,7 @@ async function editSupplier(id) {
 }
 
 async function deleteSupplier(id) {
-    if (!confirm('¿Eliminar este proveedor?')) return;
+    if (!confirm('Eliminar este proveedor?')) return;
     
     try {
         await apiRequest(`/suppliers/${id}`, 'DELETE');
@@ -845,10 +840,9 @@ async function loadCustomers() {
         const customers = await apiRequest('/customers');
         const customersTable = document.getElementById('customers-table');
         
-        // Agregar buscador
         const searchHTML = `
             <div style="margin-bottom: 20px;">
-                <input type="text" id="customer-search" placeholder="🔍 Buscar cliente por nombre, email o teléfono..." 
+                <input type="text" id="customer-search" placeholder="Buscar cliente..." 
                        style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;">
             </div>
         `;
@@ -861,8 +855,8 @@ async function loadCustomers() {
                             <th>ID</th>
                             <th>Nombre</th>
                             <th>Email</th>
-                            <th>Teléfono</th>
-                            <th>Dirección</th>
+                            <th>Telefono</th>
+                            <th>Direccion</th>
                             <th>Acciones</th>
                         </tr>
                     </thead>
@@ -889,7 +883,6 @@ async function loadCustomers() {
             </div>
         `;
         
-        // Agregar evento de búsqueda
         document.getElementById('customer-search').addEventListener('input', (e) => {
             const searchTerm = e.target.value.toLowerCase();
             const rows = document.querySelectorAll('#customers-tbody tr');
@@ -914,11 +907,11 @@ document.getElementById('add-customer-btn').addEventListener('click', () => {
             <input type="email" name="email">
         </div>
         <div class="form-group">
-            <label>Teléfono:</label>
+            <label>Telefono:</label>
             <input type="tel" name="phone">
         </div>
         <div class="form-group">
-            <label>Dirección:</label>
+            <label>Direccion:</label>
             <textarea name="address" rows="2"></textarea>
         </div>
     `, async (formData) => {
@@ -944,11 +937,11 @@ async function editCustomer(id) {
                 <input type="email" name="email" value="${customer.email || ''}">
             </div>
             <div class="form-group">
-                <label>Teléfono:</label>
+                <label>Telefono:</label>
                 <input type="tel" name="phone" value="${customer.phone || ''}">
             </div>
             <div class="form-group">
-                <label>Dirección:</label>
+                <label>Direccion:</label>
                 <textarea name="address" rows="2">${customer.address || ''}</textarea>
             </div>
         `, async (formData) => {
@@ -963,7 +956,7 @@ async function editCustomer(id) {
 }
 
 async function deleteCustomer(id) {
-    if (!confirm('¿Eliminar este cliente?')) return;
+    if (!confirm('Eliminar este cliente?')) return;
     
     try {
         await apiRequest(`/customers/${id}`, 'DELETE');
@@ -1020,14 +1013,14 @@ document.getElementById('add-user-btn').addEventListener('click', () => {
             <input type="text" name="username" required>
         </div>
         <div class="form-group">
-            <label>Contraseña:</label>
+            <label>Contrasena:</label>
             <input type="password" name="password" required>
         </div>
         <div class="form-group">
             <label>Rol:</label>
             <select name="role" required>
                 <option value="viewer">Viewer (Solo lectura)</option>
-                <option value="manager">Manager (Gestión)</option>
+                <option value="manager">Manager (Gestion)</option>
                 <option value="admin">Admin (Control total)</option>
             </select>
         </div>
@@ -1040,7 +1033,7 @@ document.getElementById('add-user-btn').addEventListener('click', () => {
 });
 
 async function deleteUser(id) {
-    if (!confirm('¿Eliminar este usuario?')) return;
+    if (!confirm('Eliminar este usuario?')) return;
     
     try {
         await apiRequest(`/users/${id}`, 'DELETE');
@@ -1064,7 +1057,7 @@ async function loadLogs() {
                         <tr>
                             <th>ID</th>
                             <th>Usuario</th>
-                            <th>Acción</th>
+                            <th>Accion</th>
                             <th>Detalles</th>
                             <th>Fecha</th>
                         </tr>
@@ -1100,17 +1093,18 @@ window.addEventListener('click', (e) => {
     }
 });
 
-// ========== INICIALIZACIÓN ==========
-console.log('🚀 Inicializando aplicación...');
-console.log('Token guardado:', TOKEN ? 'Sí' : 'No');
+// ========== INICIALIZACION ==========
+console.log('Inicializando aplicacion...');
+console.log('Token guardado:', TOKEN ? 'Si' : 'No');
 console.log('Usuario guardado:', CURRENT_USER.username || 'No');
 
 if (TOKEN && CURRENT_USER.username) {
-    document.getElementById('user-info').textContent = `👤 ${CURRENT_USER.username} (${CURRENT_USER.role})`;
+    console.log('Usuario ya logueado, mostrando pantalla principal');
+    document.getElementById('user-info').textContent = `${CURRENT_USER.username} (${CURRENT_USER.role})`;
     document.body.className = `role-${CURRENT_USER.role}`;
     showScreen('main-screen');
     loadDashboard();
 } else {
-    console.log('📝 Mostrando pantalla de login');
+    console.log('No hay sesion activa, mostrando login');
     showScreen('login-screen');
 }
