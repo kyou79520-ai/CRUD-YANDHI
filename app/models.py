@@ -41,17 +41,44 @@ class Supplier(db.Model):
     address = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+class SupplierProduct(db.Model):
+    """Tabla intermedia para relacionar proveedores con productos que venden"""
+    __tablename__ = "supplier_products"
+    id = db.Column(db.Integer, primary_key=True)
+    supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
+    purchase_price = db.Column(db.Float, nullable=False)
+    quantity_available = db.Column(db.Integer, default=0)
+    last_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    supplier = db.relationship("Supplier", backref="supplier_products")
+    product = db.relationship("Product", backref="supplier_products")
+    
+    @property
+    def profit_margin(self):
+        """Calcula el margen de ganancia"""
+        if self.product:
+            return self.product.price - self.purchase_price
+        return 0
+    
+    @property
+    def profit_percentage(self):
+        """Calcula el porcentaje de ganancia"""
+        if self.purchase_price > 0 and self.product:
+            return ((self.product.price - self.purchase_price) / self.purchase_price) * 100
+        return 0
+
 class Product(db.Model):
     __tablename__ = "products"
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(150), nullable=False)
     description = db.Column(db.Text)
     price = db.Column(db.Float, nullable=False)
-    iva = db.Column(db.Integer, default=16)  # Porcentaje de IVA (default 16%)
+    iva = db.Column(db.Integer, default=16)
     stock = db.Column(db.Integer, default=0)
     min_stock = db.Column(db.Integer, default=10)
     category = db.Column(db.String(100))
-    supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"))  # Puede ser NULL temporalmente
+    supplier_id = db.Column(db.Integer, db.ForeignKey("suppliers.id"))
     supplier = db.relationship("Supplier", backref="products")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     

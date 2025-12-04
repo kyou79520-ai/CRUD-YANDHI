@@ -691,7 +691,7 @@ async function deleteProduct(id) {
     }
 }
 
-// ========== SUPPLIERS ==========
+// ========== SUPPLIERS CON GESTION DE PRODUCTOS ==========
 async function loadSuppliers() {
     try {
         const suppliers = await apiRequest('/suppliers');
@@ -728,6 +728,7 @@ async function loadSuppliers() {
                                 <td>${s.phone || 'N/A'}</td>
                                 <td>${s.address || 'N/A'}</td>
                                 <td class="actions">
+                                    <button class="btn btn-small btn-primary" onclick="viewSupplierProducts(${s.id}, '${s.name.replace(/'/g, "\\'")}')">Ver Catalogo</button>
                                     ${CURRENT_USER.role !== 'viewer' ? `
                                         <button class="btn btn-small btn-primary" onclick="editSupplier(${s.id})">Editar</button>
                                         ${CURRENT_USER.role === 'admin' ? 
@@ -752,6 +753,192 @@ async function loadSuppliers() {
         });
     } catch (error) {
         console.error('Error loading suppliers:', error);
+    }
+}
+
+async function viewSupplierProducts(supplierId, supplierName) {
+    try {
+        const data = await apiRequest(`/suppliers/${supplierId}/products-catalog`);
+        const allProducts = await apiRequest('/products');
+        
+        const assignedProductIds = data.products.map(p => p.product_id);
+        const availableProducts = allProducts.filter(p => !assignedProductIds.includes(p.id));
+        
+        const modalContent = `
+            <div style="margin-bottom: 20px;">
+                <h3>Catalogo de ${supplierName}</h3>
+                <p style="color: #666; margin-bottom: 15px;">Productos que este proveedor te vende y sus precios</p>
+                
+                ${CURRENT_USER.role !== 'viewer' ? `
+                    <button class="btn btn-primary" onclick="addProductToSupplier(${supplierId}, '${supplierName}')">
+                        + Agregar Producto
+                    </button>
+                ` : ''}
+            </div>
+            
+            <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                <table>
+                    <thead style="position: sticky; top: 0;">
+                        <tr>
+                            <th>Producto</th>
+                            <th>Categoria</th>
+                            <th>Precio Compra</th>
+                            <th>Precio Venta</th>
+                            <th>Ganancia</th>
+                            <th>Margen %</th>
+                            <th>Cantidad Disp.</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${data.products.length === 0 ? `
+                            <tr>
+                                <td colspan="8" style="text-align: center; padding: 30px; color: #999;">
+                                    No hay productos en el catalogo de este proveedor
+                                </td>
+                            </tr>
+                        ` : data.products.map(p => `
+                            <tr>
+                                <td><strong>${p.product_name}</strong></td>
+                                <td>${p.product_category || 'N/A'}</td>
+                                <td style="color: #dc3545; font-weight: bold;">$${p.purchase_price.toFixed(2)}</td>
+                                <td style="color: #28a745; font-weight: bold;">$${p.sale_price.toFixed(2)}</td>
+                                <td>$${p.profit_margin.toFixed(2)}</td>
+                                <td style="color: ${p.profit_percentage > 30 ? '#28a745' : p.profit_percentage > 15 ? '#ffc107' : '#dc3545'};">
+                                    ${p.profit_percentage.toFixed(1)}%
+                                </td>
+                                <td>${p.quantity_available}</td>
+                                <td class="actions">
+                                    ${CURRENT_USER.role !== 'viewer' ? `
+                                        <button class="btn btn-small btn-primary" 
+                                                onclick="editSupplierProduct(${supplierId}, ${p.id}, '${p.product_name.replace(/'/g, "\\'")}', ${p.purchase_price}, ${p.quantity_available})">
+                                            Editar
+                                        </button>
+                                        ${CURRENT_USER.role === 'admin' ? `
+                                            <button class="btn btn-small btn-danger" 
+                                                    onclick="deleteSupplierProduct(${supplierId}, ${p.id})">
+                                                Eliminar
+                                            </button>
+                                        ` : ''}
+                                    ` : ''}
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        
+        const modal = document.getElementById('modal');
+        const modalContentEl = document.querySelector('.modal-content');
+        modalContentEl.style.maxWidth = '1000px';
+        
+        document.getElementById('modal-title').textContent = 'Catalogo del Proveedor';
+        document.getElementById('modal-body').innerHTML = modalContent;
+        document.getElementById('modal-form').style.display = 'none';
+        
+        modal.classList.add('active');
+        
+        document.querySelectorAll('.close').forEach(el => {
+            el.onclick = () => {
+                modal.classList.remove('active');
+                modalContentEl.style.maxWidth = '500px';
+                document.getElementById('modal-form').style.display = 'block';
+            };
+        });
+        
+    } catch (error) {
+        console.error('Error loading supplier products:', error);
+        alert('Error al cargar catalogo del proveedor');
+    }
+}
+
+async function addProductToSupplier(supplierId, supplierName) {
+    try {
+        const allProducts = await apiRequest('/products');
+        const assignedProducts = await apiRequest(`/suppliers/${supplierId}/products-catalog`);
+        const assignedProductIds = assignedProducts.products.map(p => p.product_id);
+        const availableProducts = allProducts.filter(p => !assignedProductIds.includes(p.id));
+        
+        if (availableProducts.length === 0) {
+            alert('Todos los productos ya estan en el catalogo de este proveedor');
+            return;
+        }
+        
+        showModal('Agregar Producto al Catalogo', `
+            <p style="color: #666; margin-bottom: 15px;">Proveedor: <strong>${supplierName}</strong></p>
+            
+            <div class="form-group">
+                <label>Producto:</label>
+                <select name="product_id" required>
+                    <option value="">Seleccione un producto</option>
+                    ${availableProducts.map(p => `
+                        <option value="${p.id}">${p.name} (Venta: $${p.price.toFixed(2)})</option>
+                    `).join('')}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Precio de Compra:</label>
+                <input type="number" name="purchase_price" step="0.01" required 
+                       placeholder="Precio al que el proveedor te vende">
+                <small style="color: #666;">Tu precio de venta se usara para calcular el margen</small>
+            </div>
+            
+            <div class="form-group">
+                <label>Cantidad Disponible:</label>
+                <input type="number" name="quantity_available" value="0" required
+                       placeholder="Cantidad que el proveedor tiene disponible">
+            </div>
+        `, async (formData) => {
+            const data = Object.fromEntries(formData);
+            data.product_id = parseInt(data.product_id);
+            data.purchase_price = parseFloat(data.purchase_price);
+            data.quantity_available = parseInt(data.quantity_available);
+            
+            await apiRequest(`/suppliers/${supplierId}/products-catalog`, 'POST', data);
+            alert('Producto agregado al catalogo');
+            viewSupplierProducts(supplierId, supplierName);
+        });
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error al agregar producto');
+    }
+}
+
+async function editSupplierProduct(supplierId, spId, productName, currentPrice, currentQty) {
+    showModal('Editar Producto del Catalogo', `
+        <p style="color: #666; margin-bottom: 15px;">Producto: <strong>${productName}</strong></p>
+        
+        <div class="form-group">
+            <label>Precio de Compra:</label>
+            <input type="number" name="purchase_price" step="0.01" value="${currentPrice}" required>
+        </div>
+        
+        <div class="form-group">
+            <label>Cantidad Disponible:</label>
+            <input type="number" name="quantity_available" value="${currentQty}" required>
+        </div>
+    `, async (formData) => {
+        const data = Object.fromEntries(formData);
+        data.purchase_price = parseFloat(data.purchase_price);
+        data.quantity_available = parseInt(data.quantity_available);
+        
+        await apiRequest(`/suppliers/${supplierId}/products-catalog/${spId}`, 'PUT', data);
+        alert('Producto actualizado');
+        viewSupplierProducts(supplierId, 'Proveedor');
+    });
+}
+
+async function deleteSupplierProduct(supplierId, spId) {
+    if (!confirm('Eliminar este producto del catalogo del proveedor?')) return;
+    
+    try {
+        await apiRequest(`/suppliers/${supplierId}/products-catalog/${spId}`, 'DELETE');
+        alert('Producto eliminado del catalogo');
+        viewSupplierProducts(supplierId, 'Proveedor');
+    } catch (error) {
+        alert('Error al eliminar producto del catalogo');
     }
 }
 
@@ -833,7 +1020,6 @@ async function deleteSupplier(id) {
         alert('Error al eliminar el proveedor');
     }
 }
-
 // ========== CUSTOMERS ==========
 async function loadCustomers() {
     try {

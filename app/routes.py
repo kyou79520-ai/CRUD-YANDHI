@@ -1,10 +1,10 @@
 from flask import Blueprint, request, jsonify, current_app, g
 from . import db
-from .models import User, Role, Customer, Product, Sale, SaleItem, LogEntry, Supplier
 from .utils import role_required, log_db_action
 from .auth import bp as auth_bp
 from datetime import datetime, timedelta
 from sqlalchemy import func, desc
+from .models import User, Role, Customer, Product, Sale, SaleItem, LogEntry, Supplier, SupplierProduct
 
 bp = Blueprint("api", __name__)
 bp.register_blueprint(auth_bp)
@@ -654,3 +654,114 @@ def dashboard():
             "created_at": s.created_at.isoformat()
         } for s in recent_sales]
     })
+
+# ==================== SUPPLIER PRODUCTS (AGREGAR AL FINAL) ====================
+
+
+@bp.route("/suppliers/<int:sid>/products-catalog", methods=["GET"])
+@role_required(["admin", "manager", "viewer"])
+def list_supplier_products_catalog(sid):
+    """Obtener todos los productos que vende un proveedor (catálogo del proveedor)"""
+    supplier = Supplier.query.get_or_404(sid)
+    supplier_products = SupplierProduct.query.filter_by(supplier_id=sid).all()
+    
+    return jsonify({
+        "supplier": {
+            "id": supplier.id,
+            "name": supplier.name,
+            "contact_name": supplier.contact_name
+        },
+        "products": [{
+            "id": sp.id,
+            "product_id": sp.product_id,
+            "product_name": sp.product.name,
+            "product_category": sp.product.category,
+            "purchase_price": sp.purchase_price,
+            "sale_price": sp.product.price,
+            "quantity_available": sp.quantity_available,
+            "profit_margin": sp.profit_margin,
+            "profit_percentage": sp.profit_percentage,
+            "last_updated": sp.last_updated.isoformat()
+        } for sp in supplier_products]
+    })
+
+@bp.route("/suppliers/<int:sid>/products-catalog", methods=["POST"])
+@role_required(["admin", "manager"])
+def add_product_to_supplier(sid):
+    """Agregar un producto que vende el proveedor"""
+    supplier = Supplier.query.get_or_404(sid)
+    data = request.json
+    
+    product_id = data.get("product_id")
+    purchase_price = data.get("purchase_price")
+    quantity_available = data.get("quantity_available", 0)
+    
+    if not product_id or purchase_price is None:
+        return jsonify({"msg": "product_id and purchase_price required"}), 400
+    
+    product = Product.query.get_or_404(product_id)
+    
+    # Verificar si ya existe la relación
+    existing = SupplierProduct.query.filter_by(
+        supplier_id=sid, 
+        product_id=product_id
+    ).first()
+    
+    if existing:
+        return jsonify({"msg": "Product already assigned to this supplier"}), 400
+    
+    supplier_product = SupplierProduct(
+        supplier_id=sid,
+        product_id=product_id,
+        purchase_price=float(purchase_price),
+        quantity_available=int(quantity_available)
+    )
+    
+    db.session.add(supplier_product)
+    db.session.commit()
+    
+    log_db_action("add_supplier_product", 
+                  f"supplier_id={sid}, product_id={product_id}, price={purchase_price}")
+    
+    return jsonify({
+        "id": supplier_product.id,
+        "product_name": product.name,
+        "purchase_price": supplier_product.purchase_price
+    }), 201
+
+@bp.route("/suppliers/<int:sid>/products-catalog/<int:sp_id>", methods=["PUT"])
+@role_required(["admin", "manager"])
+def update_supplier_product(sid, sp_id):
+    """Actualizar precio y cantidad de un producto del proveedor"""
+    supplier_product = SupplierProduct.query.get_or_404(sp_id)
+    
+    if supplier_product.supplier_id != sid:
+        return jsonify({"msg": "Product does not belong to this supplier"}), 400
+    
+    data = request.json
+    
+    if "purchase_price" in data:
+        supplier_product.purchase_price = float(data["purchase_price"])
+    
+    if "quantity_available" in data:
+        supplier_product.quantity_available = int(data["quantity_available"])
+    
+    db.session.commit()
+    log_db_action("update_supplier_product", f"sp_id={sp_id}")
+    
+    return jsonify({"msg": "updated"})
+
+@bp.route("/suppliers/<int:sid>/products-catalog/<int:sp_id>", methods=["DELETE"])
+@role_required(["admin"])
+def delete_supplier_product(sid, sp_id):
+    """Eliminar un producto de la lista del proveedor"""
+    supplier_product = SupplierProduct.query.get_or_404(sp_id)
+    
+    if supplier_product.supplier_id != sid:
+        return jsonify({"msg": "Product does not belong to this supplier"}), 400
+    
+    db.session.delete(supplier_product)
+    db.session.commit()
+    log_db_action("delete_supplier_product", f"sp_id={sp_id}")
+    
+    return jsonify({"msg": "deleted"})
