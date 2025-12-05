@@ -691,7 +691,7 @@ async function deleteProduct(id) {
     }
 }
 
-// ========== SUPPLIERS CON GESTION DE PRODUCTOS ==========
+// ========== SUPPLIERS - ACTUALIZADO CON GESTION DE PRODUCTOS ==========
 async function loadSuppliers() {
     try {
         const suppliers = await apiRequest('/suppliers');
@@ -728,7 +728,7 @@ async function loadSuppliers() {
                                 <td>${s.phone || 'N/A'}</td>
                                 <td>${s.address || 'N/A'}</td>
                                 <td class="actions">
-                                    <button class="btn btn-small btn-primary" onclick="viewSupplierProducts(${s.id}, '${s.name.replace(/'/g, "\\'")}')">Ver Catalogo</button>
+                                    <button class="btn btn-small btn-primary" onclick="viewSupplierProducts(${s.id}, '${s.name.replace(/'/g, "\\'")}')">Ver Productos</button>
                                     ${CURRENT_USER.role !== 'viewer' ? `
                                         <button class="btn btn-small btn-primary" onclick="editSupplier(${s.id})">Editar</button>
                                         ${CURRENT_USER.role === 'admin' ? 
@@ -758,19 +758,20 @@ async function loadSuppliers() {
 
 async function viewSupplierProducts(supplierId, supplierName) {
     try {
-        const data = await apiRequest(`/suppliers/${supplierId}/products-catalog`);
+        const data = await apiRequest(`/suppliers/${supplierId}/products`);
         const allProducts = await apiRequest('/products');
         
+        // Filtrar productos que NO están asignados a este proveedor
         const assignedProductIds = data.products.map(p => p.product_id);
         const availableProducts = allProducts.filter(p => !assignedProductIds.includes(p.id));
         
         const modalContent = `
             <div style="margin-bottom: 20px;">
-                <h3>Catalogo de ${supplierName}</h3>
-                <p style="color: #666; margin-bottom: 15px;">Productos que este proveedor te vende y sus precios</p>
+                <h3 style="color: #333; margin-bottom: 10px;">Productos de ${supplierName}</h3>
+                <p style="color: #666; margin-bottom: 15px;">Gestiona los productos que este proveedor te vende</p>
                 
                 ${CURRENT_USER.role !== 'viewer' ? `
-                    <button class="btn btn-primary" onclick="addProductToSupplier(${supplierId}, '${supplierName}')">
+                    <button class="btn btn-primary" onclick="addProductToSupplier(${supplierId}, '${supplierName.replace(/'/g, "\\'")}')">
                         + Agregar Producto
                     </button>
                 ` : ''}
@@ -778,7 +779,7 @@ async function viewSupplierProducts(supplierId, supplierName) {
             
             <div class="table-container" style="max-height: 400px; overflow-y: auto;">
                 <table>
-                    <thead style="position: sticky; top: 0;">
+                    <thead style="position: sticky; top: 0; background: #667eea;">
                         <tr>
                             <th>Producto</th>
                             <th>Categoria</th>
@@ -794,16 +795,16 @@ async function viewSupplierProducts(supplierId, supplierName) {
                         ${data.products.length === 0 ? `
                             <tr>
                                 <td colspan="8" style="text-align: center; padding: 30px; color: #999;">
-                                    No hay productos en el catalogo de este proveedor
+                                    No hay productos asignados a este proveedor
                                 </td>
                             </tr>
                         ` : data.products.map(p => `
                             <tr>
                                 <td><strong>${p.product_name}</strong></td>
                                 <td>${p.product_category || 'N/A'}</td>
-                                <td style="color: #dc3545; font-weight: bold;">$${p.purchase_price.toFixed(2)}</td>
-                                <td style="color: #28a745; font-weight: bold;">$${p.sale_price.toFixed(2)}</td>
-                                <td>$${p.profit_margin.toFixed(2)}</td>
+                                <td style="color: #dc3545; font-weight: bold;">${p.purchase_price.toFixed(2)}</td>
+                                <td style="color: #28a745; font-weight: bold;">${p.sale_price.toFixed(2)}</td>
+                                <td>${p.profit_margin.toFixed(2)}</td>
                                 <td style="color: ${p.profit_percentage > 30 ? '#28a745' : p.profit_percentage > 15 ? '#ffc107' : '#dc3545'};">
                                     ${p.profit_percentage.toFixed(1)}%
                                 </td>
@@ -811,12 +812,12 @@ async function viewSupplierProducts(supplierId, supplierName) {
                                 <td class="actions">
                                     ${CURRENT_USER.role !== 'viewer' ? `
                                         <button class="btn btn-small btn-primary" 
-                                                onclick="editSupplierProduct(${supplierId}, ${p.id}, '${p.product_name.replace(/'/g, "\\'")}', ${p.purchase_price}, ${p.quantity_available})">
+                                                onclick="editSupplierProduct(${supplierId}, ${p.id}, '${p.product_name.replace(/'/g, "\\'")}', ${p.purchase_price}, ${p.quantity_available}, '${supplierName.replace(/'/g, "\\'")}')">
                                             Editar
                                         </button>
                                         ${CURRENT_USER.role === 'admin' ? `
                                             <button class="btn btn-small btn-danger" 
-                                                    onclick="deleteSupplierProduct(${supplierId}, ${p.id})">
+                                                    onclick="deleteSupplierProduct(${supplierId}, ${p.id}, '${supplierName.replace(/'/g, "\\'")}')">
                                                 Eliminar
                                             </button>
                                         ` : ''}
@@ -829,43 +830,63 @@ async function viewSupplierProducts(supplierId, supplierName) {
             </div>
         `;
         
+        // Mostrar en un modal más grande
         const modal = document.getElementById('modal');
         const modalContentEl = document.querySelector('.modal-content');
-        modalContentEl.style.maxWidth = '1000px';
+        const modalForm = document.getElementById('modal-form');
+        const modalBody = document.getElementById('modal-body');
         
-        document.getElementById('modal-title').textContent = 'Catalogo del Proveedor';
-        document.getElementById('modal-body').innerHTML = modalContent;
-        document.getElementById('modal-form').style.display = 'none';
+        // Guardar estado original
+        const originalMaxWidth = modalContentEl.style.maxWidth;
+        
+        // Aplicar cambios
+        modalContentEl.style.maxWidth = '1200px';
+        modalForm.style.display = 'none';
+        
+        document.getElementById('modal-title').textContent = `Catálogo del Proveedor`;
+        modalBody.innerHTML = modalContent;
         
         modal.classList.add('active');
         
+        // Restaurar estado al cerrar
+        const closeModal = () => {
+            modal.classList.remove('active');
+            modalContentEl.style.maxWidth = originalMaxWidth || '500px';
+            modalForm.style.display = 'block';
+            modalBody.innerHTML = '';
+        };
+        
+        // Cerrar modal con X y click fuera
         document.querySelectorAll('.close').forEach(el => {
-            el.onclick = () => {
-                modal.classList.remove('active');
-                modalContentEl.style.maxWidth = '500px';
-                document.getElementById('modal-form').style.display = 'block';
-            };
+            el.onclick = closeModal;
+        });
+        
+        window.addEventListener('click', function closeOnOutside(e) {
+            if (e.target === modal) {
+                closeModal();
+                window.removeEventListener('click', closeOnOutside);
+            }
         });
         
     } catch (error) {
         console.error('Error loading supplier products:', error);
-        alert('Error al cargar catalogo del proveedor');
+        alert('Error al cargar productos del proveedor');
     }
 }
 
 async function addProductToSupplier(supplierId, supplierName) {
     try {
         const allProducts = await apiRequest('/products');
-        const assignedProducts = await apiRequest(`/suppliers/${supplierId}/products-catalog`);
+        const assignedProducts = await apiRequest(`/suppliers/${supplierId}/products`);
         const assignedProductIds = assignedProducts.products.map(p => p.product_id);
         const availableProducts = allProducts.filter(p => !assignedProductIds.includes(p.id));
         
         if (availableProducts.length === 0) {
-            alert('Todos los productos ya estan en el catalogo de este proveedor');
+            alert('Todos los productos ya estan asignados a este proveedor');
             return;
         }
         
-        showModal('Agregar Producto al Catalogo', `
+        showModal('Agregar Producto al Proveedor', `
             <p style="color: #666; margin-bottom: 15px;">Proveedor: <strong>${supplierName}</strong></p>
             
             <div class="form-group">
@@ -882,7 +903,7 @@ async function addProductToSupplier(supplierId, supplierName) {
                 <label>Precio de Compra:</label>
                 <input type="number" name="purchase_price" step="0.01" required 
                        placeholder="Precio al que el proveedor te vende">
-                <small style="color: #666;">Tu precio de venta se usara para calcular el margen</small>
+                <small style="color: #666;">El precio de venta actual se usará para calcular el margen</small>
             </div>
             
             <div class="form-group">
@@ -896,8 +917,8 @@ async function addProductToSupplier(supplierId, supplierName) {
             data.purchase_price = parseFloat(data.purchase_price);
             data.quantity_available = parseInt(data.quantity_available);
             
-            await apiRequest(`/suppliers/${supplierId}/products-catalog`, 'POST', data);
-            alert('Producto agregado al catalogo');
+            await apiRequest(`/suppliers/${supplierId}/products`, 'POST', data);
+            alert('Producto agregado al proveedor');
             viewSupplierProducts(supplierId, supplierName);
         });
     } catch (error) {
@@ -906,8 +927,8 @@ async function addProductToSupplier(supplierId, supplierName) {
     }
 }
 
-async function editSupplierProduct(supplierId, spId, productName, currentPrice, currentQty) {
-    showModal('Editar Producto del Catalogo', `
+async function editSupplierProduct(supplierId, spId, productName, currentPrice, currentQty, supplierName) {
+    showModal('Editar Producto del Proveedor', `
         <p style="color: #666; margin-bottom: 15px;">Producto: <strong>${productName}</strong></p>
         
         <div class="form-group">
@@ -924,100 +945,21 @@ async function editSupplierProduct(supplierId, spId, productName, currentPrice, 
         data.purchase_price = parseFloat(data.purchase_price);
         data.quantity_available = parseInt(data.quantity_available);
         
-        await apiRequest(`/suppliers/${supplierId}/products-catalog/${spId}`, 'PUT', data);
+        await apiRequest(`/suppliers/${supplierId}/products/${spId}`, 'PUT', data);
         alert('Producto actualizado');
-        viewSupplierProducts(supplierId, 'Proveedor');
+        viewSupplierProducts(supplierId, supplierName);
     });
 }
 
-async function deleteSupplierProduct(supplierId, spId) {
-    if (!confirm('Eliminar este producto del catalogo del proveedor?')) return;
+async function deleteSupplierProduct(supplierId, spId, supplierName) {
+    if (!confirm('Eliminar este producto del proveedor?')) return;
     
     try {
-        await apiRequest(`/suppliers/${supplierId}/products-catalog/${spId}`, 'DELETE');
-        alert('Producto eliminado del catalogo');
-        viewSupplierProducts(supplierId, 'Proveedor');
+        await apiRequest(`/suppliers/${supplierId}/products/${spId}`, 'DELETE');
+        alert('Producto eliminado del proveedor');
+        viewSupplierProducts(supplierId, supplierName);
     } catch (error) {
-        alert('Error al eliminar producto del catalogo');
-    }
-}
-
-document.getElementById('add-supplier-btn').addEventListener('click', () => {
-    showModal('Agregar Proveedor', `
-        <div class="form-group">
-            <label>Nombre de la Empresa:</label>
-            <input type="text" name="name" required>
-        </div>
-        <div class="form-group">
-            <label>Nombre del Contacto:</label>
-            <input type="text" name="contact_name">
-        </div>
-        <div class="form-group">
-            <label>Email:</label>
-            <input type="email" name="email">
-        </div>
-        <div class="form-group">
-            <label>Telefono:</label>
-            <input type="tel" name="phone">
-        </div>
-        <div class="form-group">
-            <label>Direccion:</label>
-            <textarea name="address" rows="2"></textarea>
-        </div>
-    `, async (formData) => {
-        const data = Object.fromEntries(formData);
-        await apiRequest('/suppliers', 'POST', data);
-        alert('Proveedor agregado');
-        loadSuppliers();
-    });
-});
-
-async function editSupplier(id) {
-    try {
-        const suppliers = await apiRequest('/suppliers');
-        const supplier = suppliers.find(s => s.id === id);
-        
-        showModal('Editar Proveedor', `
-            <div class="form-group">
-                <label>Nombre de la Empresa:</label>
-                <input type="text" name="name" value="${supplier.name}" required>
-            </div>
-            <div class="form-group">
-                <label>Nombre del Contacto:</label>
-                <input type="text" name="contact_name" value="${supplier.contact_name || ''}">
-            </div>
-            <div class="form-group">
-                <label>Email:</label>
-                <input type="email" name="email" value="${supplier.email || ''}">
-            </div>
-            <div class="form-group">
-                <label>Telefono:</label>
-                <input type="tel" name="phone" value="${supplier.phone || ''}">
-            </div>
-            <div class="form-group">
-                <label>Direccion:</label>
-                <textarea name="address" rows="2">${supplier.address || ''}</textarea>
-            </div>
-        `, async (formData) => {
-            const data = Object.fromEntries(formData);
-            await apiRequest(`/suppliers/${id}`, 'PUT', data);
-            alert('Proveedor actualizado');
-            loadSuppliers();
-        });
-    } catch (error) {
-        alert('Error al cargar el proveedor');
-    }
-}
-
-async function deleteSupplier(id) {
-    if (!confirm('Eliminar este proveedor?')) return;
-    
-    try {
-        await apiRequest(`/suppliers/${id}`, 'DELETE');
-        alert('Proveedor eliminado');
-        loadSuppliers();
-    } catch (error) {
-        alert('Error al eliminar el proveedor');
+        alert('Error al eliminar producto del proveedor');
     }
 }
 // ========== CUSTOMERS ==========
