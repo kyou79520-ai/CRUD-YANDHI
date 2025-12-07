@@ -877,7 +877,7 @@ async function viewSupplierProducts(supplierId, supplierName) {
 async function addProductToSupplier(supplierId, supplierName) {
     try {
         const allProducts = await apiRequest('/products');
-        const assignedProducts = await apiRequest(`/suppliers/${supplierId}/products`);
+        const assignedProducts = await apiRequest(`/suppliers/${supplierId}/products-catalog`);
         const assignedProductIds = assignedProducts.products.map(p => p.product_id);
         const availableProducts = allProducts.filter(p => !assignedProductIds.includes(p.id));
         
@@ -894,7 +894,7 @@ async function addProductToSupplier(supplierId, supplierName) {
                 <select name="product_id" required>
                     <option value="">Seleccione un producto</option>
                     ${availableProducts.map(p => `
-                        <option value="${p.id}">${p.name} (Venta: $${p.price.toFixed(2)})</option>
+                        <option value="${p.id}">${p.name} (Precio venta: ${p.price.toFixed(2)})</option>
                     `).join('')}
                 </select>
             </div>
@@ -917,7 +917,7 @@ async function addProductToSupplier(supplierId, supplierName) {
             data.purchase_price = parseFloat(data.purchase_price);
             data.quantity_available = parseInt(data.quantity_available);
             
-            await apiRequest(`/suppliers/${supplierId}/products`, 'POST', data);
+            await apiRequest(`/suppliers/${supplierId}/products-catalog`, 'POST', data);
             alert('Producto agregado al proveedor');
             viewSupplierProducts(supplierId, supplierName);
         });
@@ -945,7 +945,7 @@ async function editSupplierProduct(supplierId, spId, productName, currentPrice, 
         data.purchase_price = parseFloat(data.purchase_price);
         data.quantity_available = parseInt(data.quantity_available);
         
-        await apiRequest(`/suppliers/${supplierId}/products/${spId}`, 'PUT', data);
+        await apiRequest(`/suppliers/${supplierId}/products-catalog/${spId}`, 'PUT', data);
         alert('Producto actualizado');
         viewSupplierProducts(supplierId, supplierName);
     });
@@ -955,7 +955,7 @@ async function deleteSupplierProduct(supplierId, spId, supplierName) {
     if (!confirm('Eliminar este producto del proveedor?')) return;
     
     try {
-        await apiRequest(`/suppliers/${supplierId}/products/${spId}`, 'DELETE');
+        await apiRequest(`/suppliers/${supplierId}/products-catalog/${spId}`, 'DELETE');
         alert('Producto eliminado del proveedor');
         viewSupplierProducts(supplierId, supplierName);
     } catch (error) {
