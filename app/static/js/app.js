@@ -758,7 +758,7 @@ async function loadSuppliers() {
 
 async function viewSupplierProducts(supplierId, supplierName) {
     try {
-        const data = await apiRequest(`/suppliers/${supplierId}/products`);
+        const data = await apiRequest(`/suppliers/${supplierId}/products-catalog`);
         const allProducts = await apiRequest('/products');
         
         // Filtrar productos que NO están asignados a este proveedor
@@ -782,7 +782,7 @@ async function viewSupplierProducts(supplierId, supplierName) {
                     <thead style="position: sticky; top: 0; background: #667eea;">
                         <tr>
                             <th>Producto</th>
-                            <th>Categoria</th>
+                            <th>Categoría</th>
                             <th>Precio Compra</th>
                             <th>Precio Venta</th>
                             <th>Ganancia</th>
@@ -795,24 +795,25 @@ async function viewSupplierProducts(supplierId, supplierName) {
                         ${data.products.length === 0 ? `
                             <tr>
                                 <td colspan="8" style="text-align: center; padding: 30px; color: #999;">
-                                    No hay productos asignados a este proveedor
+                                    No hay productos asignados a este proveedor.<br>
+                                    <small>Haz clic en "+ Agregar Producto" para empezar.</small>
                                 </td>
                             </tr>
                         ` : data.products.map(p => `
                             <tr>
                                 <td><strong>${p.product_name}</strong></td>
                                 <td>${p.product_category || 'N/A'}</td>
-                                <td style="color: #dc3545; font-weight: bold;">${p.purchase_price.toFixed(2)}</td>
-                                <td style="color: #28a745; font-weight: bold;">${p.sale_price.toFixed(2)}</td>
-                                <td>${p.profit_margin.toFixed(2)}</td>
+                                <td style="color: #dc3545; font-weight: bold;">$${(p.purchase_price || 0).toFixed(2)}</td>
+                                <td style="color: #28a745; font-weight: bold;">$${(p.sale_price || 0).toFixed(2)}</td>
+                                <td>$${(p.profit_margin || 0).toFixed(2)}</td>
                                 <td style="color: ${p.profit_percentage > 30 ? '#28a745' : p.profit_percentage > 15 ? '#ffc107' : '#dc3545'};">
-                                    ${p.profit_percentage.toFixed(1)}%
+                                    ${(p.profit_percentage || 0).toFixed(1)}%
                                 </td>
-                                <td>${p.quantity_available}</td>
+                                <td>${p.quantity_available || 0}</td>
                                 <td class="actions">
                                     ${CURRENT_USER.role !== 'viewer' ? `
                                         <button class="btn btn-small btn-primary" 
-                                                onclick="editSupplierProduct(${supplierId}, ${p.id}, '${p.product_name.replace(/'/g, "\\'")}', ${p.purchase_price}, ${p.quantity_available}, '${supplierName.replace(/'/g, "\\'")}')">
+                                                onclick="editSupplierProduct(${supplierId}, ${p.id}, '${(p.product_name || '').replace(/'/g, "\\'")}', ${p.purchase_price || 0}, ${p.quantity_available || 0}, '${supplierName.replace(/'/g, "\\'")}')">
                                             Editar
                                         </button>
                                         ${CURRENT_USER.role === 'admin' ? `
@@ -849,7 +850,7 @@ async function viewSupplierProducts(supplierId, supplierName) {
         modal.classList.add('active');
         
         // Restaurar estado al cerrar
-        const closeModal = () => {
+        const closeModalFn = () => {
             modal.classList.remove('active');
             modalContentEl.style.maxWidth = originalMaxWidth || '500px';
             modalForm.style.display = 'block';
@@ -858,22 +859,21 @@ async function viewSupplierProducts(supplierId, supplierName) {
         
         // Cerrar modal con X y click fuera
         document.querySelectorAll('.close').forEach(el => {
-            el.onclick = closeModal;
+            el.onclick = closeModalFn;
         });
         
         window.addEventListener('click', function closeOnOutside(e) {
             if (e.target === modal) {
-                closeModal();
+                closeModalFn();
                 window.removeEventListener('click', closeOnOutside);
             }
         });
         
     } catch (error) {
         console.error('Error loading supplier products:', error);
-        alert('Error al cargar productos del proveedor');
+        alert('Error al cargar productos del proveedor: ' + error.message);
     }
 }
-
 async function addProductToSupplier(supplierId, supplierName) {
     try {
         const allProducts = await apiRequest('/products');
