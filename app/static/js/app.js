@@ -760,11 +760,27 @@ async function viewSupplierProducts(supplierId, supplierName) {
     try {
         const data = await apiRequest(`/suppliers/${supplierId}/products-catalog`);
         const allProducts = await apiRequest('/products');
-        
-        // Filtrar productos que NO están asignados a este proveedor
+
         const assignedProductIds = data.products.map(p => p.product_id);
         const availableProducts = allProducts.filter(p => !assignedProductIds.includes(p.id));
-        
+
+        const modal = document.getElementById('modal');
+        const modalContentEl = document.querySelector('.modal-content');
+        const modalForm = document.getElementById('modal-form');
+        const modalBody = document.getElementById('modal-body');
+
+        // Guardar ancho original
+        const originalMaxWidth = modalContentEl.style.maxWidth || '500px';
+
+        // Hacer el modal más grande
+        modalContentEl.style.maxWidth = '1200px';
+
+        // NO ocultamos el form, solo desactivamos el submit
+        modalForm.style.display = 'block';
+        modalForm.onsubmit = (e) => e.preventDefault();
+
+        document.getElementById('modal-title').textContent = 'Catálogo del Proveedor';
+
         const modalContent = `
             <div style="margin-bottom: 20px;">
                 <h3 style="color: #333; margin-bottom: 10px;">Productos de ${supplierName}</h3>
@@ -806,19 +822,34 @@ async function viewSupplierProducts(supplierId, supplierName) {
                                 <td style="color: #dc3545; font-weight: bold;">$${(p.purchase_price || 0).toFixed(2)}</td>
                                 <td style="color: #28a745; font-weight: bold;">$${(p.sale_price || 0).toFixed(2)}</td>
                                 <td>$${(p.profit_margin || 0).toFixed(2)}</td>
-                                <td style="color: ${p.profit_percentage > 30 ? '#28a745' : p.profit_percentage > 15 ? '#ffc107' : '#dc3545'};">
+                                <td style="color: ${
+                                    p.profit_percentage > 30 ? '#28a745' :
+                                    p.profit_percentage > 15 ? '#ffc107' :
+                                    '#dc3545'
+                                };">
                                     ${(p.profit_percentage || 0).toFixed(1)}%
                                 </td>
                                 <td>${p.quantity_available || 0}</td>
                                 <td class="actions">
                                     ${CURRENT_USER.role !== 'viewer' ? `
-                                        <button class="btn btn-small btn-primary" 
-                                                onclick="editSupplierProduct(${supplierId}, ${p.id}, '${(p.product_name || '').replace(/'/g, "\\'")}', ${p.purchase_price || 0}, ${p.quantity_available || 0}, '${supplierName.replace(/'/g, "\\'")}')">
+                                        <button class="btn btn-small btn-primary"
+                                            onclick="editSupplierProduct(
+                                                ${supplierId},
+                                                ${p.id},
+                                                '${(p.product_name || '').replace(/'/g, "\\'")}',
+                                                ${p.purchase_price || 0},
+                                                ${p.quantity_available || 0},
+                                                '${supplierName.replace(/'/g, "\\'")}'
+                                            )">
                                             Editar
                                         </button>
                                         ${CURRENT_USER.role === 'admin' ? `
-                                            <button class="btn btn-small btn-danger" 
-                                                    onclick="deleteSupplierProduct(${supplierId}, ${p.id}, '${supplierName.replace(/'/g, "\\'")}')">
+                                            <button class="btn btn-small btn-danger"
+                                                onclick="deleteSupplierProduct(
+                                                    ${supplierId},
+                                                    ${p.id},
+                                                    '${supplierName.replace(/'/g, "\\'")}'
+                                                )">
                                                 Eliminar
                                             </button>
                                         ` : ''}
@@ -830,50 +861,34 @@ async function viewSupplierProducts(supplierId, supplierName) {
                 </table>
             </div>
         `;
-        
-        // Mostrar en un modal más grande
-        const modal = document.getElementById('modal');
-        const modalContentEl = document.querySelector('.modal-content');
-        const modalForm = document.getElementById('modal-form');
-        const modalBody = document.getElementById('modal-body');
-        
-        // Guardar estado original
-        const originalMaxWidth = modalContentEl.style.maxWidth;
-        
-        // Aplicar cambios
-        modalContentEl.style.maxWidth = '1200px';
-        modalForm.style.display = 'none';
-        
-        document.getElementById('modal-title').textContent = `Catálogo del Proveedor`;
+
         modalBody.innerHTML = modalContent;
-        
         modal.classList.add('active');
-        
-        // Restaurar estado al cerrar
+
+        // Funcion para cerrar y restaurar tamaño
         const closeModalFn = () => {
             modal.classList.remove('active');
-            modalContentEl.style.maxWidth = originalMaxWidth || '500px';
-            modalForm.style.display = 'block';
+            modalContentEl.style.maxWidth = originalMaxWidth;
             modalBody.innerHTML = '';
         };
-        
-        // Cerrar modal con X y click fuera
+
         document.querySelectorAll('.close').forEach(el => {
             el.onclick = closeModalFn;
         });
-        
+
         window.addEventListener('click', function closeOnOutside(e) {
             if (e.target === modal) {
                 closeModalFn();
                 window.removeEventListener('click', closeOnOutside);
             }
         });
-        
+
     } catch (error) {
         console.error('Error loading supplier products:', error);
         alert('Error al cargar productos del proveedor: ' + error.message);
     }
 }
+
 async function addProductToSupplier(supplierId, supplierName) {
     try {
         const allProducts = await apiRequest('/products');
