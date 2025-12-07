@@ -756,6 +756,96 @@ async function loadSuppliers() {
     }
 }
 
+// Botón "Agregar Proveedor"
+document.getElementById('add-supplier-btn').addEventListener('click', () => {
+    showModal('Agregar Proveedor', `
+        <div class="form-group">
+            <label>Nombre:</label>
+            <input type="text" name="name" required>
+        </div>
+        <div class="form-group">
+            <label>Contacto:</label>
+            <input type="text" name="contact_name">
+        </div>
+        <div class="form-group">
+            <label>Email:</label>
+            <input type="email" name="email">
+        </div>
+        <div class="form-group">
+            <label>Telefono:</label>
+            <input type="tel" name="phone">
+        </div>
+        <div class="form-group">
+            <label>Direccion:</label>
+            <textarea name="address" rows="2"></textarea>
+        </div>
+    `, async (formData) => {
+        const data = Object.fromEntries(formData);
+        await apiRequest('/suppliers', 'POST', data);
+        alert('Proveedor agregado');
+        loadSuppliers();
+    });
+});
+
+// Editar proveedor
+async function editSupplier(id) {
+    try {
+        const suppliers = await apiRequest('/suppliers');
+        const supplier = suppliers.find(s => s.id === id);
+
+        if (!supplier) {
+            alert('No se encontró el proveedor');
+            return;
+        }
+
+        showModal('Editar Proveedor', `
+            <div class="form-group">
+                <label>Nombre:</label>
+                <input type="text" name="name" value="${supplier.name || ''}" required>
+            </div>
+            <div class="form-group">
+                <label>Contacto:</label>
+                <input type="text" name="contact_name" value="${supplier.contact_name || ''}">
+            </div>
+            <div class="form-group">
+                <label>Email:</label>
+                <input type="email" name="email" value="${supplier.email || ''}">
+            </div>
+            <div class="form-group">
+                <label>Telefono:</label>
+                <input type="tel" name="phone" value="${supplier.phone || ''}">
+            </div>
+            <div class="form-group">
+                <label>Direccion:</label>
+                <textarea name="address" rows="2">${supplier.address || ''}</textarea>
+            </div>
+        `, async (formData) => {
+            const data = Object.fromEntries(formData);
+            await apiRequest(`/suppliers/${id}`, 'PUT', data);
+            alert('Proveedor actualizado');
+            loadSuppliers();
+        });
+    } catch (error) {
+        console.error(error);
+        alert('Error al cargar el proveedor');
+    }
+}
+
+// Eliminar proveedor
+async function deleteSupplier(id) {
+    if (!confirm('¿Eliminar este proveedor?')) return;
+
+    try {
+        await apiRequest(`/suppliers/${id}`, 'DELETE');
+        alert('Proveedor eliminado');
+        loadSuppliers();
+    } catch (error) {
+        console.error(error);
+        alert('Error al eliminar el proveedor');
+    }
+}
+
+
 async function viewSupplierProducts(supplierId, supplierName) {
     try {
         const data = await apiRequest(`/suppliers/${supplierId}/products-catalog`);
