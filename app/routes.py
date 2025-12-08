@@ -375,78 +375,120 @@ def delete_product(pid):
 @bp.route("/sales", methods=["POST"])
 @role_required(["admin", "manager"])
 def create_sale():
-    data = request.json
-    items_data = data.get("items", [])
-    
-    if not items_data:
-        return jsonify({"msg": "No items in sale"}), 400
-    
-    # Calcular subtotal, IVA y total
-    subtotal = 0
-    total_iva = 0
-    
-    for item in items_data:
-        product = Product.query.get(item["product_id"])
-        if not product:
-            return jsonify({"msg": f"Product {item['product_id']} not found"}), 404
-        if product.stock < item["quantity"]:
-            return jsonify({"msg": f"Insufficient stock for {product.name}"}), 400
-        
-        item_subtotal = product.price * item["quantity"]
-        
-        # Calcular IVA del item
-        iva_rate = getattr(product, 'iva', getattr(product, 'iva_rate', 16))
-        item_iva = item_subtotal * (iva_rate / 100)
-        
-        subtotal += item_subtotal
-        total_iva += item_iva
-    
-    total = subtotal + total_iva
-    
-    # Crear venta
-    sale = Sale(
-        customer_id=data.get("customer_id"),
-        user_id=g.current_user["id"],
-        subtotal=subtotal if hasattr(Sale, 'subtotal') else None,
-        iva=total_iva if hasattr(Sale, 'iva') else None,
-        total=total,
-        payment_method=data.get("payment_method", "cash"),
-        status="completed"
-    )
-    db.session.add(sale)
-    db.session.flush()
-    
-    # Crear items y actualizar stock
-    for item in items_data:
-        product = Product.query.get(item["product_id"])
-        iva_rate = getattr(product, 'iva', getattr(product, 'iva_rate', 16))
-        item_subtotal = product.price * item["quantity"]
-        item_iva = item_subtotal * (iva_rate / 100)
-        item_total = item_subtotal + item_iva
-        
-        sale_item = SaleItem(
-            sale_id=sale.id,
-            product_id=product.id,
-            quantity=item["quantity"],
-            unit_price=product.price,
-            subtotal=item_total
+    try:
+        data = request.get_json() or {}
+        items_data = data.get("items") or []
+
+        if not items_data:
+            return jsonify({"msg": "No items in sale"}), 400
+
+        subtotal = 0.0
+        total_iva = 0.0
+
+        # --- Validar items y calcular totales ---
+        for item in items_data:
+            product_id = item.get("product_id")
+            quantity = item.get("quantity")
+
+            if not product_id or not isinstance(quantity, (int, float)) or quantity <= 0:
+                return jsonify({"msg": "Invalid item data"}), 400
+
+            product = Product.query.get(product_id)
+            if not product:
+                return jsonify({"msg": f"Product {product_id} not found"}), 404
+
+            if product.stock < quantity:
+                return jsonify({"msg": f"Insufficient stock for {product.name}"}), 400
+
+            # IVA seguro (si product.iva es None, usa 16 por defecto)
+            iva_attr = getattr(product, "iva", None)
+            if iva_attr is None:
+                iva_attr = getattr(product, "iva_rate", 16)
+            iva_rate = iva_attr if isinstance(iva_attr, (int, float)) else 16
+
+            line_subtotal = product.price * quantity
+            line_iva = line_subtotal * (iva_rate / 100.0)
+
+            subtotal += line_subtotal
+            total_iva += line_iva
+
+        total = subtotal + total_iva
+
+        # --- Obtener user_id desde g.current_user ---
+        user_id = None
+        if hasattr(g, "current_user") and g.current_user:
+            cu = g.current_user
+            if isinstance(cu, dict):
+                user_id = cu.get("id")
+            else:
+                user_id = getattr(cu, "id", None)
+
+        if not user_id:
+            return jsonify({"msg": "User not found in context"}), 401
+
+        # --- Crear venta (sin pasar kwargs que no existan en el modelo) ---
+        sale = Sale(
+            customer_id=data.get("customer_id"),
+            user_id=user_id,
+            total=total,
+            payment_method=data.get("payment_method", "cash"),
+            status="completed"
         )
-        
-        # Agregar iva_amount solo si la columna existe
-        if hasattr(SaleItem, 'iva_amount'):
-            sale_item.iva_amount = item_iva
-        
-        product.stock -= item["quantity"]
-        db.session.add(sale_item)
-    
-    db.session.commit()
-    log_db_action("create_sale", f"sale_id={sale.id}, total=${total:.2f}")
-    return jsonify({
-        "id": sale.id,
-        "subtotal": subtotal,
-        "iva": total_iva,
-        "total": total
-    }), 201
+
+        # Asignar subtotal / iva solo si esas columnas existen en la tabla
+        if hasattr(Sale, "subtotal"):
+            sale.subtotal = subtotal
+        if hasattr(Sale, "iva"):
+            sale.iva = total_iva
+
+        db.session.add(sale)
+        db.session.flush()  # para obtener sale.id
+
+        # --- Crear items y actualizar stock ---
+        for item in items_data:
+            product = Product.query.get(item["product_id"])
+            quantity = item["quantity"]
+
+            iva_attr = getattr(product, "iva", None)
+            if iva_attr is None:
+                iva_attr = getattr(product, "iva_rate", 16)
+            iva_rate = iva_attr if isinstance(iva_attr, (int, float)) else 16
+
+            line_subtotal = product.price * quantity
+            line_iva = line_subtotal * (iva_rate / 100.0)
+            line_total = line_subtotal + line_iva
+
+            sale_item = SaleItem(
+                sale_id=sale.id,
+                product_id=product.id,
+                quantity=quantity,
+                unit_price=product.price,
+                subtotal=line_total
+            )
+
+            # Guardar el IVA por item solo si la columna existe
+            if hasattr(SaleItem, "iva_amount"):
+                sale_item.iva_amount = line_iva
+
+            product.stock -= quantity
+            db.session.add(sale_item)
+
+        db.session.commit()
+        log_db_action("create_sale", f"sale_id={sale.id}, total=${total:.2f}")
+
+        return jsonify({
+            "id": sale.id,
+            "subtotal": subtotal,
+            "iva": total_iva,
+            "total": total
+        }), 201
+
+    except Exception as e:
+        current_app.logger.exception("Error creating sale")
+        db.session.rollback()
+        # Muy útil para debug en el front
+        return jsonify({"msg": "Error creating sale", "error": str(e)}), 500
+
 
 @bp.route("/sales", methods=["GET"])
 @role_required(["admin", "manager", "viewer"])
@@ -457,26 +499,26 @@ def list_sales():
     customer_id = request.args.get('customer_id', '')
     user_id = request.args.get('user_id', '')
     payment_method = request.args.get('payment_method', '')
-    
+
     query = Sale.query
-    
+
     if start_date:
         query = query.filter(Sale.created_at >= datetime.fromisoformat(start_date))
-    
+
     if end_date:
         query = query.filter(Sale.created_at <= datetime.fromisoformat(end_date))
-    
+
     if customer_id:
         query = query.filter_by(customer_id=int(customer_id))
-    
+
     if user_id:
         query = query.filter_by(user_id=int(user_id))
-    
+
     if payment_method:
         query = query.filter_by(payment_method=payment_method)
-    
+
     sales = query.order_by(Sale.created_at.desc()).all()
-    
+
     return jsonify([{
         "id": s.id,
         "customer": s.customer.name if s.customer else "N/A",
@@ -488,6 +530,7 @@ def list_sales():
         "status": s.status,
         "created_at": s.created_at.isoformat()
     } for s in sales])
+
 
 @bp.route("/sales/<int:sid>", methods=["GET"])
 @role_required(["admin", "manager", "viewer"])
@@ -512,6 +555,7 @@ def get_sale(sid):
         } for item in sale.items]
     })
 
+
 @bp.route("/sales/<int:sid>", methods=["DELETE"])
 @role_required(["admin"])
 def delete_sale(sid):
@@ -525,6 +569,7 @@ def delete_sale(sid):
     db.session.commit()
     log_db_action("delete_sale", f"sale_id={sid}")
     return jsonify({"msg": "deleted"})
+
 
 # ==================== REPORTS / CONSULTAS ====================
 @bp.route("/reports/sales-summary", methods=["GET"])
