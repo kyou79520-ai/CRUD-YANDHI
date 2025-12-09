@@ -4,6 +4,7 @@ from .utils import role_required, log_db_action
 from .auth import bp as auth_bp
 from datetime import datetime, timedelta
 from sqlalchemy import func, desc
+from sqlalchemy.exc import IntegrityError
 from .models import User, Role, Customer, Product, Sale, SaleItem, LogEntry, Supplier, SupplierProduct
 
 bp = Blueprint("api", __name__)
@@ -158,7 +159,9 @@ def list_suppliers():
         "email": s.email,
         "phone": s.phone,
         "address": s.address,
-        "product_count": len(s.products) if hasattr(s, 'products') else 0
+        # contar productos del catálogo proveedor-producto si existe,
+        # si no, caer en la relación directa "products"
+        "product_count": len(s.supplier_products) if hasattr(s, "supplier_products") else len(getattr(s, "products", []))
     } for s in suppliers])
 
 @bp.route("/suppliers/<int:sid>/products", methods=["GET"])
@@ -366,10 +369,39 @@ def update_product(pid):
 @role_required(["admin"])
 def delete_product(pid):
     product = Product.query.get_or_404(pid)
-    db.session.delete(product)
-    db.session.commit()
-    log_db_action("delete_product", f"product_id={pid}")
-    return jsonify({"msg": "deleted"})
+    try:
+        # 1) Si el producto tiene ventas, NO permitir borrarlo
+        if hasattr(product, "sale_items") and product.sale_items:
+            return jsonify({
+                "msg": "No se puede eliminar el producto porque tiene ventas registradas."
+            }), 400
+
+        # 2) Eliminar relaciones del catálogo proveedor-producto
+        if hasattr(product, "supplier_products") and product.supplier_products:
+            for sp in list(product.supplier_products):
+                db.session.delete(sp)
+
+        # 3) Ahora sí, eliminar el producto
+        db.session.delete(product)
+        db.session.commit()
+        log_db_action("delete_product", f"product_id={pid}")
+        return jsonify({"msg": "deleted"})
+
+    except IntegrityError as e:
+        db.session.rollback()
+        current_app.logger.exception("Error deleting product (integrity)")
+        return jsonify({
+            "msg": "No se puede eliminar el producto porque está relacionado con otros registros.",
+            "error": str(e)
+        }), 400
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("Error deleting product")
+        return jsonify({
+            "msg": "Error deleting product",
+            "error": str(e)
+        }), 500
 
 # ==================== SALES ====================
 @bp.route("/sales", methods=["POST"])
@@ -701,7 +733,6 @@ def dashboard():
     })
 
 # ==================== SUPPLIER PRODUCTS (AGREGAR AL FINAL) ====================
-
 
 @bp.route("/suppliers/<int:sid>/products-catalog", methods=["GET"])
 @role_required(["admin", "manager", "viewer"])
