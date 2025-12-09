@@ -637,3 +637,13 @@ body.role-admin .manager-only {
 body.role-manager .manager-only {
     display: block;
 }
+
+/* Ocultar opciones del menú para el rol viewer */
+body.role-viewer .menu-item[data-section="sales"],
+body.role-viewer .menu-item[data-section="sales-history"],
+body.role-viewer .menu-item[data-section="suppliers"],
+body.role-viewer .menu-item[data-section="customers"],
+body.role-viewer .menu-item[data-section="users"],
+body.role-viewer .menu-item[data-section="logs"] {
+    display: none !important;
+}
